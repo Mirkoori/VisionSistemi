@@ -31,4 +31,4 @@ export const icons = {
 // Indirizzo del servizio: '/api' con il server Node, oppure l'indirizzo Supabase impostato in config.js.
 export const API = (typeof window !== 'undefined' && window.HUB_API) || '/api';
 // Pagina di un evento (stessa cartella della pagina corrente: funziona anche su GitHub Pages in una sottocartella).
-export const eventUrl = (code) => new URL('e.html', location.href).href.split('#')[0].split('?')[0] + '?c=' + code;
+export const eventUrl = (code) => new URL('e.html', document.baseURI).href.split('#')[0].split('?')[0] + '?c=' + code;

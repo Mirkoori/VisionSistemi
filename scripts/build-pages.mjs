@@ -9,4 +9,14 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.cpSync('public', out, { recursive: true });
 fs.writeFileSync(path.join(out, 'config.js'), `window.HUB_API = ${JSON.stringify(api)};\n`);
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
+// versione negli indirizzi dei file, così il telefono non usa copie vecchie
+const v = Date.now().toString(36);
+for (const f of ['index.html', 'e.html']) {
+  const p = path.join(out, f);
+  fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(/(src|href)="((?:js|css)\/[^"]+|config\.js)"/g, `$1="$2?v=${v}"`));
+}
+// pagina iniziale del sito (cartella principale): è l'app stessa, senza passaggi intermedi
+const home = fs.readFileSync(path.join(out, 'index.html'), 'utf8').replace('<head>', '<head>\n<base href="docs/">');
+fs.writeFileSync('index.html', home);
+fs.writeFileSync('.nojekyll', '');
 console.log('Pronto in', out);
