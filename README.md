@@ -45,7 +45,7 @@ Variabili: `ADMIN_PIN`, `PORT`, `MAX_FILE_MB` (default 500), `EVENT_QUOTA_MB` (d
 - Le chiavi sbagliate vengono limitate: dopo 20 tentativi in un minuto l'indirizzo è bloccato per 5 minuti.
 - Solo certi tipi di file si caricano (presentazioni, video, audio, immagini, documenti, zip). I file si scaricano sempre come allegato, mai aperti dal browser.
 - La creazione di eventi richiede `ADMIN_PIN`. Senza, è disattivata.
-- Agenzia e service entrano con link + PIN a 6 cifre. Il PIN va mandato in un messaggio separato dal link. Il link per i relatori è di sola lettura, non ha PIN e non mostra i file.
+- Agenzia e service entrano con link + PIN a 6 cifre. Link e PIN si mandano insieme con un messaggio già pronto, dalla sezione Contatti dell'area Eventi; se un messaggio finisce a chi non doveva, si rigenera il link. Il link per i relatori è di sola lettura, non ha PIN e non mostra i file.
 - I link si rigenerano dalla scheda Info: quello vecchio smette subito di funzionare. Il service può rigenerare i link di agenzia e relatori, l'agenzia solo quello dei relatori.
 - Scadenza: dopo la data dell'evento più `RETENTION_DAYS` giorni i file vengono cancellati (controllo ogni ora) e il link risponde "scaduto". Solo il service può cambiare la data.
 - Registro attività (aperture, caricamenti, scaricamenti, cancellazioni, rigenerazioni) visibile ad agenzia e service. Non salva indirizzi IP.

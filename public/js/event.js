@@ -225,7 +225,7 @@ function info() {
       linkRow('Link per i relatori', 'Sola lettura: programma e informazioni.', ev.links.ospite) +
       linkRow('Link per l\'agenzia', 'Può caricare e modificare. Non girarlo ai relatori.', ev.links.agenzia) +
       (ev.links.tecnico ? linkRow('Link per il service', 'Solo per noi.', ev.links.tecnico) : '') + '</div>';
-    h += '<div class="card"><h3>Sicurezza</h3><p>Agenzia e service entrano con il link e con un PIN, che va dato a parte (a voce o con un altro messaggio). I relatori vedono solo programma e informazioni.</p>' +
+    h += '<div class="card"><h3>Sicurezza</h3><p>Agenzia e service entrano con il link e con un PIN. I relatori vedono solo programma e informazioni.</p>' +
       '<dl class="kv"><dt>Scadenza</dt><dd>I file vengono cancellati il ' + esc(dayLong(ev.expiresAt)) + ' e il link smette di funzionare.</dd></dl>' +
       (ev.role === 'tecnico' ? '<label for="exp">Sposta la scadenza</label><input type="date" id="exp" value="' + esc(ev.expiresAt) + '"><div class="btns"><button class="btn small" type="button" id="saveX">Salva scadenza</button></div><p class="msg" id="msgX" role="status"></p>' : '') +
       '<div class="btns"><button class="btn small danger" type="button" data-rot="ospite">Rigenera link relatori</button>' +

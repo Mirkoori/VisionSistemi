@@ -61,23 +61,19 @@ let sendPanel = null;       // { code, id, what } messaggio in preparazione
 
 function linkFor(e, role) { return eventUrl(e.code) + '#k=' + e.links[role]; }
 function firstName(c) { return (c.name || '').trim().split(/\s+/)[0] || ''; }
-function buildMessage(e, c, what) {
+function buildMessage(e, c) {
   const hi = 'Buongiorno' + (firstName(c) ? ' ' + firstName(c) : '') + ',';
   const when = [e.date && dayLong(e.date), e.venue].filter(Boolean).join(', ');
   const title = '"' + e.name + '"' + (when ? ' (' + when + ')' : '');
-  if (what === 'pin') {
-    return { subject: 'PIN di accesso · ' + e.name,
-      body: hi + '\necco il PIN per entrare nel portale dell\'evento ' + e.name + ':\n\n' + e.pins[c.role] + '\n\nVa scritto quando il sito lo chiede, dopo aver aperto il link che ti ho mandato a parte. È personale: non condividerlo.\n\nService audio video' };
-  }
   if (c.role === 'ospite') {
     return { subject: 'Programma e informazioni · ' + e.name,
       body: hi + '\nqui trovi il programma e le informazioni dell\'evento ' + title + ':\n\n' + linkFor(e, 'ospite') + '\n\nÈ un link di sola lettura, personale: ti chiedo di non inoltrarlo.\n\nService audio video' };
   }
   const extra = c.role === 'tecnico'
     ? 'Con questo link entri come service: puoi modificare il programma e caricare o scaricare i materiali.'
-    : 'Con questo link puoi caricare il programma e i materiali dell\'evento (presentazioni, video, musiche, slide tappo) e vedere le informazioni.';
+    : 'Qui puoi caricare il programma e i materiali dell\'evento (presentazioni, video, musiche, slide tappo) e vedere le informazioni.';
   return { subject: 'Portale evento · ' + e.name,
-    body: hi + '\necco il link del portale per l\'evento ' + title + ':\n\n' + linkFor(e, c.role) + '\n\n' + extra + '\n\nPer entrare serve anche un PIN a 6 cifre: te lo mando con un messaggio separato.\nIl link è personale: ti chiedo di non inoltrarlo. Per i relatori usa il link in sola lettura che trovi nella scheda Info del portale.\n\nService audio video' };
+    body: hi + '\necco il portale per l\'evento ' + title + '.\n\nLink: ' + linkFor(e, c.role) + '\nPIN: ' + e.pins[c.role] + '\n\n' + extra + '\nApri il link e, quando il sito lo chiede, scrivi il PIN.\n\nIl link e il PIN sono personali: ti chiedo di non inoltrarli. Per i relatori usa il link in sola lettura che trovi nella scheda Info del portale.\n\nService audio video' };
 }
 function waNumber(phone) {
   let d = String(phone || '').replace(/[^\d+]/g, '');
@@ -88,35 +84,31 @@ function waNumber(phone) {
 }
 
 function contactRow(e, c) {
-  const canPin = c.role !== 'ospite';
   const bits = [ROLE_NAMES[c.role], c.email, c.phone].filter(Boolean).join(' · ');
-  const sent = [c.sentLink && 'link inviato ' + fmtSent(c.sentLink), c.sentPin && 'PIN inviato ' + fmtSent(c.sentPin)].filter(Boolean).join(' · ');
+  const sent = c.sentLink ? 'inviato ' + fmtSent(c.sentLink) : '';
   const open = sendPanel && sendPanel.code === e.code && sendPanel.id === c.id;
   let h = '<div class="row" style="align-items:flex-start"><div class="t"><b>' + esc(c.name || c.email || c.phone) + '</b><small>' + esc(bits) + '</small>' + (sent ? '<small style="color:var(--ok);font-weight:700">' + esc(sent) + '</small>' : '') + '</div>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn small primary" type="button" data-send="' + esc(e.code + ':' + c.id + ':link') + '">Invia link</button>' +
-    (canPin ? '<button class="btn small" type="button" data-send="' + esc(e.code + ':' + c.id + ':pin') + '">Invia PIN</button>' : '') +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn small primary" type="button" data-send="' + esc(e.code + ':' + c.id + ':link') + '">Invia</button>' +
     '<button class="btn small danger" type="button" data-cdel="' + esc(e.code + ':' + c.id) + '">×</button></div></div>';
   if (open) h += sendPanelHtml(e, c);
   return h;
 }
 function sendPanelHtml(e, c) {
-  const m = buildMessage(e, c, sendPanel.what);
-  const label = sendPanel.what === 'pin' ? 'PIN' : 'link';
+  const m = buildMessage(e, c);
   const chans = [];
   if (c.email) chans.push('<button class="btn small primary" type="button" data-ch="mail">Email</button>');
   if (c.phone) chans.push('<button class="btn small primary" type="button" data-ch="wa">WhatsApp</button><button class="btn small" type="button" data-ch="sms">SMS</button>');
   chans.push('<button class="btn small" type="button" data-ch="copy">Copia</button><button class="btn small" type="button" data-ch="close">Chiudi</button>');
-  const tip = sendPanel.what === 'pin'
-    ? 'Mandalo con un canale diverso da quello del link (per esempio link per email e PIN su WhatsApp).'
-    : 'Il PIN va mandato a parte, con un altro messaggio: usa "Invia PIN" dopo questo.';
-  return '<div style="background:var(--bg);border-radius:16px;padding:12px;margin:8px 0 4px"><label for="sm">Messaggio con il ' + label + ' (puoi modificarlo)</label>' +
+  const tip = c.role === 'ospite' ? 'Link di sola lettura: chi lo riceve vede programma e informazioni, non i file.'
+    : 'Un solo messaggio con link e PIN. Se finisce a chi non doveva, rigenera il link dalla scheda Info del portale.';
+  return '<div style="background:var(--bg);border-radius:16px;padding:12px;margin:8px 0 4px"><label for="sm">Messaggio (puoi modificarlo)</label>' +
     '<textarea id="sm" rows="9" style="font-size:13px">' + esc(m.body) + '</textarea><p class="msg" style="min-height:0;margin:4px 0 0;font-weight:500;color:var(--muted)">' + esc(tip) + '</p>' +
     '<div class="btns" style="margin-top:8px">' + chans.join('') + '</div><p class="msg" id="smsg" role="status"></p></div>';
 }
 function contactsSection(e) {
   const list = e.contacts || [];
   return '<details data-key="c:' + esc(e.code) + '"' + (openKeys.has('c:' + e.code) ? ' open' : '') + ' style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">Contatti e invio (' + list.length + ')</summary>' +
-    (list.length ? list.map((c) => contactRow(e, c)).join('') : '<p class="msg" style="font-weight:500;color:var(--muted)">Aggiungi i referenti: poi mandi link e PIN con un tocco.</p>') +
+    (list.length ? list.map((c) => contactRow(e, c)).join('') : '<p class="msg" style="font-weight:500;color:var(--muted)">Aggiungi i referenti: poi mandi link e PIN in un unico messaggio.</p>') +
     '<form data-cform="' + esc(e.code) + '" autocomplete="off" style="margin-top:12px"><label>Nuovo contatto</label><input type="text" name="name" maxlength="80" placeholder="Nome e cognome">' +
     '<select name="role" aria-label="Ruolo"><option value="agenzia">Referente agenzia (link + PIN)</option><option value="ospite">Relatore (sola lettura)</option><option value="tecnico">Service (link + PIN)</option></select>' +
     '<input type="email" name="email" maxlength="120" placeholder="Email"><input type="tel" name="phone" maxlength="30" placeholder="Telefono (anche WhatsApp)">' +
@@ -131,7 +123,7 @@ function eventCard(e, n) {
     contactsSection(e) +
     '<details data-key="l:' + esc(e.code) + '"' + (openKeys.has('l:' + e.code) ? ' open' : '') + ' style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">Link e PIN</summary>' +
     linkLine('Agenzia', base + e.links.agenzia, e.pins.agenzia, n + 'a') + linkLine('Noi (service)', base + e.links.tecnico, e.pins.tecnico, n + 't') + linkLine('Relatori (sola lettura)', base + e.links.ospite, '', n + 'o') +
-    '<p class="msg" style="font-weight:500;color:var(--muted)">Manda il PIN in un messaggio separato dal link.</p></details></div>';
+    '<p class="msg" style="font-weight:500;color:var(--muted)">Link e PIN vanno insieme nel messaggio: usa Invia dalla sezione Contatti.</p></details></div>';
 }
 
 async function saveContacts(code, mutate) {
@@ -195,7 +187,7 @@ function wirePanel() {
   const e = events.find((x) => x.code === sendPanel.code), c = e && (e.contacts || []).find((x) => x.id === sendPanel.id);
   if (!c) { sendPanel = null; return; }
   app.querySelectorAll('[data-ch]').forEach((b) => b.addEventListener('click', async () => {
-    const text = $('#sm').value, m = buildMessage(e, c, sendPanel.what), msg = $('#smsg'), ch = b.dataset.ch;
+    const text = $('#sm').value, m = buildMessage(e, c), msg = $('#smsg'), ch = b.dataset.ch;
     if (ch === 'close') { sendPanel = null; return rerender(); }
     if (ch === 'copy') { const ok = await copyText(text); msg.className = 'msg ' + (ok ? 'ok' : 'err'); msg.textContent = ok ? 'Messaggio copiato.' : 'Non riesco a copiare: selezionalo a mano.'; return; }
     const url = ch === 'mail' ? 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(text)
@@ -203,7 +195,7 @@ function wirePanel() {
       : 'sms:' + c.phone.replace(/[^\d+]/g, '') + '?&body=' + encodeURIComponent(text);
     window.open(url, '_blank'); // subito, nel gesto dell'utente: altrimenti il telefono blocca l'apertura
     // segno l'invio come "preparato": il messaggio parte quando lo confermi nell'app di posta o di messaggi
-    try { const key = sendPanel.what === 'pin' ? 'sentPin' : 'sentLink'; const now = new Date().toISOString(); await saveContacts(e.code, (l) => l.map((x) => (x.id === c.id ? { ...x, [key]: now } : x))); } catch {}
+    try { const key = 'sentLink'; const now = new Date().toISOString(); await saveContacts(e.code, (l) => l.map((x) => (x.id === c.id ? { ...x, [key]: now } : x))); } catch {}
     sendPanel = null; rerender();
   }));
 }
