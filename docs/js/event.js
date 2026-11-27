@@ -38,10 +38,11 @@ const putEvent = async (body) => {
 
 function hero(color, section, title, sub, back) {
   return '<div class="hero" style="background:' + color + '"><div class="topbar">' +
-    (back ? '<button class="icon-btn" type="button" data-go="" aria-label="Indietro">' + icons.back + '</button>' : '<span class="tag">Hub Evento</span>') +
+    (back ? '<button class="icon-btn" type="button" data-go="" aria-label="Indietro">' + icons.back + '</button>' : (isStaff() ? '<a class="btn small" href="' + esc(new URL('index.html', location.href).href) + '#eventi">← Home</a>' : '<span class="tag">Hub Evento</span>')) +
     '<span class="tag">' + esc(section) + '</span></div>' +
     '<h1 class="big">' + esc(title) + '</h1>' + (sub ? '<p class="sub">' + esc(sub) + '</p>' : '') + '</div>';
 }
+const isStaff = () => { try { return !!sessionStorage.getItem('hub:admin'); } catch { return false; } }; // si è entrati dall'area riservata
 const roleLabel = { agenzia: 'Agenzia', tecnico: 'Service', ospite: 'Sola lettura' };
 
 /* ---------- schermata principale ---------- */
@@ -52,7 +53,7 @@ function home() {
   if (canEdit() || ev.timerUrl) cards.push(['c4', '03', 'Timer', 'Schermo relatore · Moderatore', '#timer']);
   if (canEdit()) cards.push(['c2', '02', 'Materiali', 'Presentazioni · Video · Musiche · Tappo' + (ev.files.length ? ' · ' + ev.files.length + ' file' : ''), '#materiali']);
   cards.push(['c1', '01', 'Programma', (ev.program.trim() || ev.programFile) ? 'Interventi e orari' : 'Da inserire', '#programma', dayShort(ev.date)]);
-  app.innerHTML = '<div class="hero"><div class="topbar"><span class="tag">Hub Evento</span><span class="tag">' + esc(code) + '</span></div>' +
+  app.innerHTML = '<div class="hero"><div class="topbar">' + (isStaff() ? '<a class="btn small" href="' + esc(new URL('index.html', location.href).href) + '#eventi">← Home</a>' : '<span class="tag">Hub Evento</span>') + '<span class="tag">' + esc(code) + '</span></div>' +
     '<h1 class="big">' + esc(ev.name) + '</h1>' + (ev.date ? '<p class="sub">' + esc(dayLong(ev.date)) + '</p>' : '') + (info ? '<p class="sub" style="margin-top:6px;font-weight:700">' + esc(info) + '</p>' : '') +
     '<span class="role">' + roleLabel[ev.role] + '</span></div>' +
     '<nav class="stack" aria-label="Sezioni">' + cards.map((c, i) =>
