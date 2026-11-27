@@ -1,0 +1,86 @@
+/* Stile "wallet" come WAOOO: sfondo greige, Montserrat nero pesante, carte colorate sovrapposte, liste bianche arrotondate. */
+@font-face { font-family: Montserrat; font-weight: 500; font-display: swap; src: url(../fonts/montserrat-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: Montserrat; font-weight: 600; font-display: swap; src: url(../fonts/montserrat-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: Montserrat; font-weight: 700; font-display: swap; src: url(../fonts/montserrat-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: Montserrat; font-weight: 800; font-display: swap; src: url(../fonts/montserrat-latin-800-normal.woff2) format("woff2"); }
+@font-face { font-family: Montserrat; font-weight: 900; font-display: swap; src: url(../fonts/montserrat-latin-900-normal.woff2) format("woff2"); }
+:root {
+  --bg: #ECE9E3; --ink: #141414; --card: #FEFEFE; --muted: #6B6862; --line: #dcd8d0;
+  --c1: #FE693C; --c2: #C7B5F4; --c3: #BED2C0; --ok: #1d7a4a; --bad: #b3261e;
+  --f: Montserrat, "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 500 15px/1.45 var(--f); }
+body { min-height: 100%; }
+.app { max-width: 520px; margin: 0 auto; padding: 0 0 48px; min-height: 100vh; }
+a { color: inherit; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+/* testata */
+.hero { padding: 18px 20px 26px; border-radius: 0 0 36px 36px; background: var(--c1); }
+.hero.plain { background: var(--bg); border-radius: 0; }
+.topbar { display: flex; align-items: center; justify-content: space-between; min-height: 40px; }
+.icon-btn { width: 40px; height: 40px; border-radius: 12px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; }
+.icon-btn svg { width: 26px; height: 26px; stroke: var(--ink); fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.tag { font-weight: 800; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.big { font-weight: 900; font-size: clamp(32px, 11vw, 60px); line-height: .95; letter-spacing: -.03em; margin: 22px 0 0; text-transform: uppercase; overflow-wrap: anywhere; }
+.sub { font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; margin: 14px 0 0; }
+.role { display: inline-block; font-weight: 800; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 4px 9px; border-radius: 99px; background: var(--ink); color: var(--card); margin-top: 14px; }
+
+/* carte sovrapposte */
+.stack { padding: 28px 14px 0; display: flex; flex-direction: column; }
+.wcard { display: block; width: 100%; text-align: left; border: 0; cursor: pointer; text-decoration: none; border-radius: 22px; padding: 18px 18px 22px; margin-top: -22px; box-shadow: 0 -3px 10px rgba(0,0,0,.09); position: relative; }
+.wcard:first-child { margin-top: 0; }
+.wcard .top { display: flex; align-items: center; gap: 10px; }
+.wcard .n { font-weight: 800; font-size: 11px; width: 22px; }
+.wcard h2 { margin: 0; flex: 1; font-weight: 900; font-size: 20px; letter-spacing: -.01em; text-transform: uppercase; }
+.wcard svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.wcard .s { margin: 8px 0 0 32px; font-weight: 800; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; line-height: 1.5; }
+.wcard .fig { font-weight: 900; font-size: 58px; line-height: .95; letter-spacing: -.04em; margin: 14px 0 0 32px; text-transform: uppercase; }
+.wcard.c1 { background: var(--c1); color: var(--ink); } .wcard.c2 { background: var(--c2); color: var(--ink); }
+.wcard.c3 { background: var(--c3); color: var(--ink); } .wcard.c4 { background: var(--ink); color: var(--card); }
+.wcard.last { padding-bottom: 28px; }
+
+/* liste interne */
+.list { padding: 22px 14px 0; display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--card); border-radius: 22px; padding: 16px 18px; }
+.card h3 { margin: 0 0 4px; font-weight: 900; font-size: 15px; letter-spacing: .01em; text-transform: uppercase; }
+.card p { margin: 6px 0 0; color: var(--muted); font-weight: 500; }
+.row { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.row + .row { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+.row .t { min-width: 0; } .row .t b { display: block; font-weight: 700; overflow-wrap: anywhere; } .row .t small { color: var(--muted); font-weight: 500; font-size: 12px; }
+.time { font-weight: 900; font-size: 15px; min-width: 52px; }
+.prog { display: grid; grid-template-columns: 56px 1fr; gap: 6px 10px; align-items: baseline; }
+.prog + .prog { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+.empty { text-align: center; color: var(--muted); font-weight: 700; padding: 28px 12px; }
+.kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; margin: 10px 0 0; }
+.kv dt { font-weight: 800; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+.kv dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+
+/* moduli e pulsanti */
+label { display: block; font-weight: 800; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; margin: 14px 0 6px; }
+label:first-child { margin-top: 0; }
+input[type=text], input[type=date], input[type=time], input[type=tel], input[type=password], input[type=url], textarea, select {
+  width: 100%; border: 2px solid var(--line); background: var(--card); border-radius: 14px; padding: 11px 13px; font-weight: 600;
+}
+textarea { min-height: 150px; resize: vertical; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 2px solid var(--ink); background: var(--card); color: var(--ink); border-radius: 99px; padding: 11px 18px; font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; text-decoration: none; }
+.btn.primary { background: var(--ink); color: var(--card); }
+.btn.small { padding: 7px 13px; font-size: 11px; } .btn.danger { border-color: var(--bad); color: var(--bad); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 2px solid var(--ink); background: transparent; border-radius: 99px; padding: 7px 13px; font-weight: 800; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--card); }
+.msg { font-weight: 700; font-size: 13px; margin: 12px 0 0; min-height: 1.2em; } .msg.err { color: var(--bad); } .msg.ok { color: var(--ok); }
+.meter { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 10px; } .meter i { display: block; height: 100%; background: var(--ink); }
+.linkbox { display: flex; gap: 8px; align-items: center; margin-top: 8px; } .linkbox input { font-size: 12px; }
+.group { font-weight: 900; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 8px 6px -4px; }
+.lock { padding: 56px 20px; text-align: center; } .lock h1 { font-weight: 900; font-size: 34px; text-transform: uppercase; letter-spacing: -.02em; margin: 0 0 10px; }
+.lock p { color: var(--muted); font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) { .wcard { transition: transform .15s; } .wcard:hover { transform: translateY(-2px); } }
+
+input[type=file] { font-weight: 600; max-width: 100%; }
+input[type=file]::file-selector-button { font: 800 12px var(--f); letter-spacing: .06em; text-transform: uppercase; border: 2px solid var(--ink); background: transparent; border-radius: 99px; padding: 9px 16px; margin-right: 10px; cursor: pointer; }
