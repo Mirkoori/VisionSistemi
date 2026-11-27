@@ -12,6 +12,7 @@ const TOOLS = [
   { name: 'Palco Timer', note: 'Timer per sala, relatore e moderatore', url: 'https://mirkoori.github.io/Timer/' },
   { name: 'PPT Cavalieri', note: 'Cavalieri elettronici: una slide per relatore dal programma', url: 'https://mirkoori.github.io/pptcavalieri/' },
   { name: 'Player Evento', note: 'Regia: materiali, tappi e output su schermi remoti', url: 'https://mirkoori.github.io/playerevento/regia1.html' },
+  { name: 'PPT Playlist', note: 'Windows: apre le presentazioni in sequenza (cartella su Drive)', url: 'https://drive.google.com/drive/folders/1MImEFecH-ujF4FV1UMWUlkTanyYmcHnf' },
   { name: 'Rider Evento', note: 'Scheda tecnica e rider per l\'agenzia', url: 'https://mirkoori.github.io/Rider_evento/' },
 ];
 
