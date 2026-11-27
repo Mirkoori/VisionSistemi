@@ -177,11 +177,18 @@ export function createHubServer({
 
   async function api(req, res, url) {
     const ip = ipOf(req);
-    // creazione evento: solo con il PIN di amministrazione
-    if (url.pathname === '/api/events' && req.method === 'POST') {
-      if (!adminPin) return err(res, 503, 'Creazione eventi non attiva: manca ADMIN_PIN sul server.');
+    // area riservata a noi: elenco e creazione eventi, solo con il PIN di amministrazione
+    if (url.pathname === '/api/events' && (req.method === 'POST' || req.method === 'GET')) {
+      if (!adminPin) return err(res, 503, 'Area riservata non attiva: manca ADMIN_PIN sul server.');
       if (blocked(ip)) return err(res, 429, 'Troppi tentativi. Riprova tra qualche minuto.');
       if (!safeEqual(req.headers['x-admin-pin'] || '', adminPin)) { noteFail(ip); return err(res, 401, 'PIN non corretto.'); }
+      if (req.method === 'GET') {
+        const list = Object.values(events).map((e) => ({
+          code: e.code, name: e.name, date: e.date, venue: e.venue, files: e.files.length, expiresAt: e.expiresAt, purged: !!e.purged,
+          createdAt: e.createdAt, links: e.tokens, pins: e.pins,
+        })).sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+        return send(res, 200, { events: list });
+      }
       const b = await readJson(req);
       const code = newCode();
       const date = /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') ? b.date : '';
@@ -255,7 +262,7 @@ export function createHubServer({
   function serveStatic(req, res, url) {
     let p = url.pathname;
     if (/^\/e\/[A-Za-z0-9]+\/?$/.test(p)) p = '/e.html';
-    else if (p === '/nuovo') p = '/nuovo.html';
+    else if (p === '/nuovo') { res.writeHead(302, { location: '/#eventi' }); return res.end(); }
     else if (p === '/') p = '/index.html';
     const file = path.normalize(path.join(PUBLIC_DIR, p));
     if (!file.startsWith(PUBLIC_DIR + path.sep)) return err(res, 403, 'Vietato.');

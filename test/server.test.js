@@ -202,3 +202,20 @@ test('solo il service può spostare la scadenza e l\'attività viene registrata'
   assert.ok(log.some((l) => l.action === 'caricato' && l.detail === 'a.pdf' && l.role === 'agenzia'));
   await s.close();
 });
+
+test('l\'elenco eventi è solo per chi ha il PIN di amministrazione', async () => {
+  const s = await setup();
+  try {
+    await s.make({ name: 'Uno', date: '2027-03-18' });
+    const no = await fetch(s.base + '/api/events', { headers: { 'x-admin-pin': 'sbagliato' } });
+    assert.equal(no.status, 401);
+    const ok = await fetch(s.base + '/api/events', { headers: { 'x-admin-pin': 'segreto' } });
+    assert.equal(ok.status, 200);
+    const j = await ok.json();
+    assert.equal(j.events.length, 1);
+    assert.equal(j.events[0].name, 'Uno');
+    assert.ok(j.events[0].links.agenzia && j.events[0].pins.tecnico);
+    const r = await fetch(s.base + '/nuovo', { redirect: 'manual' });
+    assert.equal(r.status, 302);
+  } finally { await s.close(); }
+});

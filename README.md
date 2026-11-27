@@ -25,7 +25,7 @@ npm install
 ADMIN_PIN=prova npm start
 ```
 
-Apri `http://localhost:3000/nuovo`, scrivi il PIN, crea un evento e usa i link che compaiono.
+Apri `http://localhost:3000`, scrivi il PIN di amministrazione: si entra nella home riservata (Eventi, Tools, Altro). Da Eventi crei un evento, copi link e PIN da mandare all’agenzia e lo apri con un tocco.
 
 ## Metterlo sul server
 
