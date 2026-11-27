@@ -13,7 +13,8 @@ const hm = /(?:^|[#&])k=([^&]+)/.exec(location.hash);
 if (hm) {
   token = decodeURIComponent(hm[1]);
   try { localStorage.setItem(KEY, token); } catch {}
-  history.replaceState(null, '', location.pathname + location.search); // la chiave non resta nell'indirizzo
+  const gm = /(?:^|[#&])go=([a-z]+)/.exec(location.hash); // &go=materiali: si apre direttamente quella sezione
+  history.replaceState(null, '', location.pathname + location.search + (gm ? '#' + gm[1] : '')); // la chiave non resta nell'indirizzo
 }
 const canEdit = () => ev && (ev.role === 'agenzia' || ev.role === 'tecnico');
 
@@ -226,7 +227,7 @@ function timer() {
 }
 
 /* ---------- info ---------- */
-const INFO_FIELDS = [['montaggio', 'Inizio montaggio', 'time'], ['inizio', 'Inizio evento', 'time'], ['fine', 'Fine evento', 'time'], ['referente', 'Referente', 'text'], ['telefono', 'Telefono', 'tel']];
+const INFO_FIELDS = [['indirizzo', 'Via e città', 'text'], ['mappa', 'Link mappa (opzionale)', 'url'], ['montaggio', 'Inizio montaggio', 'time'], ['inizio', 'Inizio evento', 'time'], ['fine', 'Fine evento', 'time'], ['referente', 'Referente', 'text'], ['telefono', 'Telefono', 'tel']];
 function linkRow(label, note, tok) {
   const url = eventUrl(code) + '#k=' + tok;
   return '<label>' + esc(label) + '</label><div class="linkbox"><input type="text" readonly value="' + esc(url) + '" aria-label="' + esc(label) + '"><button class="btn small" type="button" data-copy="' + esc(url) + '">Copia</button></div><p style="margin-top:4px;font-size:12px">' + esc(note) + '</p>';
@@ -253,7 +254,7 @@ function info() {
       '<p>Rigenerare un link annulla subito quello vecchio: usalo se è finito a chi non doveva averlo.</p><p class="msg" id="msgR" role="status"></p></div>';
     h += '<div class="card"><h3>Attività recenti</h3>' + (ev.log.length ? ev.log.map((l) => '<div class="row"><div class="t"><b>' + esc(l.action + (l.detail ? ': ' + l.detail : '')) + '</b><small>' + esc(roleLabel[l.role] + ' · ' + new Date(l.at).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</small></div></div>').join('') : '<p class="empty">Ancora nessuna attività.</p>') + '</div>';
   } else {
-    const rows = [['Data', dayLong(ev.date)], ['Location', ev.venue], ['Montaggio', i.montaggio], ['Inizio', i.inizio], ['Fine', i.fine], ['Referente', i.referente], ['Telefono', i.telefono], ['Note', i.note]].filter((r) => r[1]);
+    const rows = [['Data', dayLong(ev.date)], ['Location', ev.venue], ['Indirizzo', i.indirizzo], ['Montaggio', i.montaggio], ['Inizio', i.inizio], ['Fine', i.fine], ['Referente', i.referente], ['Telefono', i.telefono], ['Note', i.note]].filter((r) => r[1]);
     h += '<div class="card">' + (rows.length ? '<dl class="kv">' + rows.map((r) => '<dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd>').join('') + '</dl>' : '<p class="empty">Nessuna informazione inserita.</p>') + '</div>';
   }
   app.innerHTML = h + '</div>';

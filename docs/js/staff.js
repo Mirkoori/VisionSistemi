@@ -122,12 +122,24 @@ const bigCard = (href, title, note) => '<a class="card" href="' + href + '" styl
   '<small style="display:block;margin-top:4px;color:var(--muted);font-weight:600">' + esc(note) + '</small></a>';
 const findEvent = (code) => { const e = events.find((x) => x.code === code); if (!e) location.hash = '#eventi'; return e; };
 
+const mapUrl = (e) => (e.info && e.info.mappa) || ((e.info && e.info.indirizzo) || e.venue ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent([e.venue, e.info && e.info.indirizzo].filter(Boolean).join(' ')) : '');
+// dati pratici dell'evento, sopra i pulsanti
+function infoCard(e) {
+  const i = e.info || {};
+  const rows = [['Location', e.venue], ['Indirizzo', i.indirizzo], ['Montaggio', i.montaggio], ['Inizio', i.inizio], ['Fine', i.fine], ['Referente', i.referente], ['Telefono', i.telefono], ['Note', i.note]].filter((r) => r[1]);
+  const map = mapUrl(e);
+  return '<div class="card">' + (rows.length ? '<dl class="kv">' + rows.map((r) => '<dt>' + r[0] + '</dt><dd>' + (r[0] === 'Telefono' ? '<a href="tel:' + esc(r[1].replace(/[^\d+]/g, '')) + '">' + esc(r[1]) + '</a>' : esc(r[1])) + '</dd>').join('') + '</dl>'
+    : '<p class="empty">Nessuna informazione: si compila da Materiali, nella scheda Info.</p>') +
+    (map ? '<div class="btns"><a class="btn small primary" href="' + esc(map) + '" target="_blank" rel="noopener">Mappa</a></div>' : '') + '</div>';
+}
+
 // pagina di un evento: ci si arriva toccando la card nella lista
 function eventoPage(code) {
   const e = findEvent(code); if (!e) return;
-  const meta = [e.date && dayLong(e.date), e.venue].filter(Boolean).join(' · ');
+  const meta = e.date ? dayLong(e.date) : '';
   const n = (e.contacts || []).length;
   app.innerHTML = heroBack('var(--c1)', 'Evento', e.name, meta || 'Senza data', 'eventi') + '<div class="list">' +
+    infoCard(e) +
     (e.purged ? '<div class="card"><p class="empty">Evento concluso: i materiali sono stati cancellati.</p></div>'
       : '<a class="card" href="#" data-open="' + esc(e.code) + '" style="display:block;text-decoration:none;color:inherit"><b style="font-size:22px;line-height:1.15;display:block">Materiali</b><small style="display:block;margin-top:4px;color:var(--muted);font-weight:600">Entra nell\'evento · ' + e.files + ' file · scade il ' + esc(dayShort(e.expiresAt)) + '</small></a>') +
     bigCard('#evento/' + esc(code) + '/contatti', 'Contatti', n ? n + (n === 1 ? ' contatto' : ' contatti') : 'Nessun contatto') +
@@ -206,7 +218,7 @@ function wire() {
   app.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', (ev) => {
     ev.preventDefault(); const e = events.find((x) => x.code === b.dataset.open); if (!e) return;
     try { sessionStorage.setItem('hubpin:' + e.code, e.pins.tecnico); } catch {} // entriamo senza ridigitare il PIN
-    location.href = eventUrl(e.code) + '#k=' + e.links.tecnico;
+    location.href = eventUrl(e.code) + '#k=' + e.links.tecnico + '&go=materiali';
   }));
   // contatti: aggiunta
   app.querySelectorAll('form[data-cform]').forEach((f) => f.addEventListener('submit', async (ev) => {

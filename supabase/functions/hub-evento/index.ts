@@ -18,6 +18,7 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_RE = /^[A-Z0-9]{4,12}$/;
 const EDIT = new Set(["agenzia", "tecnico"]);
 const CONTACT_ROLES = ["agenzia", "ospite", "tecnico"];
+const INFO_DEFAULT: Record<string, string> = { indirizzo: "", mappa: "", montaggio: "", inizio: "", fine: "", referente: "", telefono: "", note: "" };
 const isoOrEmpty = (v: unknown) => (/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(v || "")) ? String(v) : "");
 
 const CORS = {
@@ -76,7 +77,7 @@ async function purge(ev: Ev) {
 
 function publicEvent(ev: Ev, role: string) {
   const pf = ev.files.find((f: Ev) => f.kind === "programma");
-  const base: Ev = { code: ev.code, role, name: ev.name, date: ev.date, venue: ev.venue, program: ev.program, info: ev.info, timerUrl: ev.timerUrl,
+  const base: Ev = { code: ev.code, role, name: ev.name, date: ev.date, venue: ev.venue, program: ev.program, info: { ...INFO_DEFAULT, ...ev.info }, timerUrl: ev.timerUrl,
     programFile: pf ? { id: pf.id, name: pf.name, size: pf.size, at: pf.at } : null };
   if (EDIT.has(role)) {
     base.files = ev.files.map(({ id, kind, label, name, size, at }: Ev) => ({ id, kind, label, name, size, at }));
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
         const { data } = await sb.from("hub_events").select("data");
         const all: Ev[] = (data || []).map((r) => r.data);
         for (const ev of all) if (!ev.purged && today() > ev.expiresAt) await purge(ev);
-        const list = all.map((e) => ({ code: e.code, name: e.name, date: e.date, venue: e.venue, files: e.files.length, expiresAt: e.expiresAt, purged: !!e.purged, createdAt: e.createdAt, links: e.tokens, pins: e.pins, contacts: e.contacts || [] }))
+        const list = all.map((e) => ({ code: e.code, name: e.name, date: e.date, venue: e.venue, files: e.files.length, expiresAt: e.expiresAt, purged: !!e.purged, createdAt: e.createdAt, links: e.tokens, pins: e.pins, contacts: e.contacts || [], info: { ...INFO_DEFAULT, ...e.info } }))
           .sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
         return json(200, { events: list });
       }
@@ -147,7 +148,7 @@ Deno.serve(async (req) => {
       const date = /^\d{4}-\d{2}-\d{2}$/.test(b.date || "") ? b.date : "";
       const ev: Ev = {
         code, name: clip(b.name, 120) || "Evento senza nome", date, venue: clip(b.venue, 160),
-        program: "", info: { montaggio: "", inizio: "", fine: "", referente: "", telefono: "", note: "" }, timerUrl: "",
+        program: "", info: { ...INFO_DEFAULT }, timerUrl: "",
         tokens: { agenzia: tok(), tecnico: tok(), ospite: tok() }, pins: { agenzia: pin6(), tecnico: pin6() }, files: [], log: [], contacts: [],
         createdAt: new Date().toISOString(), expiresAt: addDays(date || today(), date ? RETENTION_DAYS : 60), purged: false,
       };
@@ -194,7 +195,7 @@ Deno.serve(async (req) => {
       if ("program" in b) ev.program = clip(b.program, 20000);
       if (role === "tecnico" && /^\d{4}-\d{2}-\d{2}$/.test(b.expiresAt || "")) { ev.expiresAt = b.expiresAt; logAdd(ev, role, "scadenza", b.expiresAt); }
       if ("timerUrl" in b) ev.timerUrl = /^https?:\/\//.test(b.timerUrl || "") ? clip(b.timerUrl, 300) : "";
-      if (b.info && typeof b.info === "object") for (const k of Object.keys(ev.info)) if (k in b.info) ev.info[k] = clip(b.info[k], k === "note" ? 2000 : 160);
+      if (b.info && typeof b.info === "object") for (const k of Object.keys(INFO_DEFAULT)) if (k in b.info) ev.info[k] = k === "mappa" && b.info[k] && !/^https?:\/\//.test(String(b.info[k]).trim()) ? "" : clip(String(b.info[k]).trim(), k === "note" ? 2000 : k === "mappa" ? 400 : 160);
       await save(ev);
       return json(200, publicEvent(ev, role));
     }

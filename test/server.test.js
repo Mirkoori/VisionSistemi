@@ -318,3 +318,18 @@ test('contatti: il nome agenzia viene salvato', async () => {
     assert.equal(j.contacts[0].agency, 'Acme Eventi');
   } finally { await s.close(); }
 });
+
+test('info: indirizzo e mappa si salvano, la mappa solo se è un link', async () => {
+  const s = await setup();
+  try {
+    const r = await s.make();
+    const put = (info) => s.call(r.code, r.links.agenzia, '', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ info }) });
+    const j = await (await put({ indirizzo: ' Via Roma 1, Bologna ', mappa: 'javascript:alert(1)' })).json();
+    assert.equal(j.info.indirizzo, 'Via Roma 1, Bologna');
+    assert.equal(j.info.mappa, '');
+    const k = await (await put({ mappa: 'https://maps.app.goo.gl/abc' })).json();
+    assert.equal(k.info.mappa, 'https://maps.app.goo.gl/abc');
+    const list = await (await fetch(s.base + '/api/events', { headers: { 'x-admin-pin': 'segreto' } })).json();
+    assert.equal(list.events[0].info.indirizzo, 'Via Roma 1, Bologna');
+  } finally { await s.close(); }
+});
