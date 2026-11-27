@@ -86,7 +86,7 @@ function waNumber(phone) {
 }
 
 function contactRow(e, c) {
-  const bits = [ROLE_NAMES[c.role], c.email, c.phone].filter(Boolean).join(' · ');
+  const bits = [c.agency, ROLE_NAMES[c.role], c.email, c.phone].filter(Boolean).join(' · ');
   const sent = c.sentLink ? 'inviato ' + fmtSent(c.sentLink) : '';
   const open = sendPanel && sendPanel.code === e.code && sendPanel.id === c.id;
   let h = '<div class="row" style="align-items:flex-start"><div class="t"><b>' + esc(c.name || c.email || c.phone) + '</b><small>' + esc(bits) + '</small>' + (sent ? '<small style="color:var(--ok);font-weight:700">' + esc(sent) + '</small>' : '') + '</div>' +
@@ -111,7 +111,7 @@ function contactsSection(e) {
   const list = e.contacts || [];
   return '<details data-key="c:' + esc(e.code) + '"' + (openKeys.has('c:' + e.code) ? ' open' : '') + ' style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">Contatti e invio (' + list.length + ')</summary>' +
     (list.length ? list.map((c) => contactRow(e, c)).join('') : '<p class="msg" style="font-weight:500;color:var(--muted)">Aggiungi i referenti: poi mandi link e PIN in un unico messaggio.</p>') +
-    '<form data-cform="' + esc(e.code) + '" autocomplete="off" style="margin-top:12px"><label>Nuovo contatto</label><input type="text" name="name" maxlength="80" placeholder="Nome e cognome">' +
+    '<form data-cform="' + esc(e.code) + '" autocomplete="off" style="margin-top:12px"><label>Nuovo contatto</label><input type="text" name="agency" maxlength="80" placeholder="Nome agenzia" value="' + esc(([...list].reverse().find((c) => c.agency) || {}).agency || '') + '"><input type="text" name="name" maxlength="80" placeholder="Nome e cognome">' +
     '<select name="role" aria-label="Ruolo"><option value="agenzia">Referente agenzia (link + PIN)</option><option value="ospite">Relatore (sola lettura)</option><option value="tecnico">Service (link + PIN)</option></select>' +
     '<input type="email" name="email" maxlength="120" placeholder="Email"><input type="tel" name="phone" maxlength="30" placeholder="Telefono (anche WhatsApp)">' +
     '<div class="btns"><button class="btn small primary" type="submit">Aggiungi contatto</button></div><p class="msg" data-cmsg></p></form></details>';
@@ -168,7 +168,7 @@ function eventi(keep) {
   // contatti: aggiunta
   app.querySelectorAll('form[data-cform]').forEach((f) => f.addEventListener('submit', async (ev) => {
     ev.preventDefault(); const code = f.dataset.cform, m = f.querySelector('[data-cmsg]'), d = new FormData(f);
-    const c = { name: String(d.get('name') || '').trim(), role: d.get('role'), email: String(d.get('email') || '').trim(), phone: String(d.get('phone') || '').trim() };
+    const c = { agency: String(d.get('agency') || '').trim(), name: String(d.get('name') || '').trim(), role: d.get('role'), email: String(d.get('email') || '').trim(), phone: String(d.get('phone') || '').trim() };
     if (!c.name && !c.email && !c.phone) { m.className = 'msg err'; m.textContent = 'Scrivi almeno un nome, un\'email o un telefono.'; return; }
     if (c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) { m.className = 'msg err'; m.textContent = 'L\'email non sembra corretta.'; return; }
     try { await saveContacts(code, (l) => [...l, c]); openKeys.add('c:' + code); rerender(); } catch (x) { m.className = 'msg err'; m.textContent = x.message; }

@@ -35,7 +35,7 @@ const isoOrEmpty = (v) => (/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(v || '')) 
 function cleanContacts(list) {
   return (Array.isArray(list) ? list : []).slice(0, 30).map((c) => ({
     id: /^[a-f0-9]{8}$/.test(c?.id || '') ? c.id : crypto.randomBytes(4).toString('hex'),
-    name: clip(c?.name, 80), role: CONTACT_ROLES.includes(c?.role) ? c.role : 'agenzia',
+    name: clip(c?.name, 80), agency: clip(c?.agency, 80).trim(), role: CONTACT_ROLES.includes(c?.role) ? c.role : 'agenzia',
     email: clip(c?.email, 120).trim(), phone: clip(c?.phone, 30).replace(/[^\d+()\- ]/g, '').trim(),
     sentLink: isoOrEmpty(c?.sentLink), sentPin: isoOrEmpty(c?.sentPin),
   })).filter((c) => c.name || c.email || c.phone);

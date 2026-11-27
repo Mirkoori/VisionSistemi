@@ -105,7 +105,7 @@ function cleanContacts(list: any) {
   // deno-lint-ignore no-explicit-any
   return (Array.isArray(list) ? list : []).slice(0, 30).map((c: any) => ({
     id: /^[a-f0-9]{8}$/.test(c?.id || "") ? c.id : hex(randBytes(4)),
-    name: clip(c?.name, 80), role: CONTACT_ROLES.includes(c?.role) ? c.role : "agenzia",
+    name: clip(c?.name, 80), agency: clip(c?.agency, 80).trim(), role: CONTACT_ROLES.includes(c?.role) ? c.role : "agenzia",
     email: clip(c?.email, 120).trim(), phone: clip(c?.phone, 30).replace(/[^\d+()\- ]/g, "").trim(),
     sentLink: isoOrEmpty(c?.sentLink), sentPin: isoOrEmpty(c?.sentPin),
     // deno-lint-ignore no-explicit-any

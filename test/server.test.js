@@ -308,3 +308,13 @@ test('contatti dell\'evento: solo con il PIN di amministrazione e mai visibili a
     assert.equal((await fetch(`${s.base}/api/events/ZZZZZZ`, { method: 'PUT', headers: { 'x-admin-pin': 'segreto' }, body: '{}' })).status, 404);
   } finally { await s.close(); }
 });
+
+test('contatti: il nome agenzia viene salvato', async () => {
+  const s = await setup();
+  try {
+    const r = await s.make();
+    const res = await fetch(`${s.base}/api/events/${r.code}`, { method: 'PUT', headers: { 'x-admin-pin': 'segreto', 'content-type': 'application/json' }, body: JSON.stringify({ contacts: [{ name: 'Anna', agency: '  Acme Eventi ', role: 'agenzia' }] }) });
+    const j = await res.json();
+    assert.equal(j.contacts[0].agency, 'Acme Eventi');
+  } finally { await s.close(); }
+});
