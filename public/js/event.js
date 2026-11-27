@@ -109,6 +109,7 @@ function xhrUpload(file, label, onProgress) {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest(); x.open('POST', '/api/e/' + code + '/upload');
     x.setRequestHeader('authorization', 'Bearer ' + token);
+    { const pn = getPin(); if (pn) x.setRequestHeader('x-pin', pn); }
     x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch {} x.status === 201 ? resolve(j.file) : reject(new Error(j.error || 'Caricamento non riuscito.')); };
     x.onerror = () => reject(new Error('Connessione interrotta.'));

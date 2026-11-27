@@ -25,7 +25,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .icon-btn { width: 40px; height: 40px; border-radius: 12px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; }
 .icon-btn svg { width: 26px; height: 26px; stroke: var(--ink); fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .tag { font-weight: 800; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
-.big { font-weight: 900; font-size: clamp(40px, 13vw, 66px); line-height: .95; letter-spacing: -.03em; margin: 22px 0 0; text-transform: uppercase; overflow-wrap: anywhere; }
+.big { font-weight: 900; font-size: clamp(32px, 11vw, 60px); line-height: .95; letter-spacing: -.03em; margin: 22px 0 0; text-transform: uppercase; overflow-wrap: anywhere; }
 .sub { font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; margin: 14px 0 0; }
 .role { display: inline-block; font-weight: 800; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 4px 9px; border-radius: 99px; background: var(--ink); color: var(--card); margin-top: 14px; }
 
@@ -81,3 +81,6 @@ textarea { min-height: 150px; resize: vertical; }
 .lock { padding: 56px 20px; text-align: center; } .lock h1 { font-weight: 900; font-size: 34px; text-transform: uppercase; letter-spacing: -.02em; margin: 0 0 10px; }
 .lock p { color: var(--muted); font-weight: 600; }
 @media (prefers-reduced-motion: no-preference) { .wcard { transition: transform .15s; } .wcard:hover { transform: translateY(-2px); } }
+
+input[type=file] { font-weight: 600; max-width: 100%; }
+input[type=file]::file-selector-button { font: 800 12px var(--f); letter-spacing: .06em; text-transform: uppercase; border: 2px solid var(--ink); background: transparent; border-radius: 99px; padding: 9px 16px; margin-right: 10px; cursor: pointer; }
