@@ -281,3 +281,30 @@ test('file del programma: lo carica l\'agenzia, lo vedono tutti, il nuovo sostit
     assert.equal((await s.call(r.code, r.links.ospite, '/program-file')).headers.get('content-type'), 'image/png');
   } finally { await s.close(); }
 });
+
+test('contatti dell\'evento: solo con il PIN di amministrazione e mai visibili a link e relatori', async () => {
+  const s = await setup();
+  try {
+    const r = await s.make();
+    const put = (pin, contacts) => fetch(`${s.base}/api/events/${r.code}`, { method: 'PUT', headers: { 'x-admin-pin': pin, 'content-type': 'application/json' }, body: JSON.stringify({ contacts }) });
+    assert.equal((await put('sbagliato', [])).status, 401);
+    const ok = await put('segreto', [
+      { name: 'Anna Rossi', role: 'agenzia', email: 'anna@agenzia.it', phone: '+39 333 1234567' },
+      { name: 'Dott. Bianchi', role: 'strano', email: 'b@x.it', phone: 'abc333' },
+      { name: '', email: '', phone: '' },
+    ]);
+    assert.equal(ok.status, 200);
+    const j = await ok.json();
+    assert.equal(j.contacts.length, 2); // il contatto vuoto sparisce
+    assert.equal(j.contacts[1].role, 'agenzia'); // un ruolo sconosciuto non passa
+    assert.equal(j.contacts[1].phone, '333'); // dal telefono restano solo cifre e simboli
+    assert.match(j.contacts[0].id, /^[a-f0-9]{8}$/);
+    const list = await (await fetch(s.base + '/api/events', { headers: { 'x-admin-pin': 'segreto' } })).json();
+    assert.equal(list.events[0].contacts.length, 2);
+    for (const tok of [r.links.agenzia, r.links.tecnico, r.links.ospite]) {
+      const ev = await (await s.call(r.code, tok)).json();
+      assert.equal(ev.contacts, undefined);
+    }
+    assert.equal((await fetch(`${s.base}/api/events/ZZZZZZ`, { method: 'PUT', headers: { 'x-admin-pin': 'segreto' }, body: '{}' })).status, 404);
+  } finally { await s.close(); }
+});

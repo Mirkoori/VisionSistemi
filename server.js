@@ -30,6 +30,16 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_RE = /^[A-Z0-9]{4,12}$/;
 const EDIT_ROLES = new Set(['agenzia', 'tecnico']);
 
+const CONTACT_ROLES = ['agenzia', 'ospite', 'tecnico'];
+const isoOrEmpty = (v) => (/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(v || '')) ? String(v) : '');
+function cleanContacts(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 30).map((c) => ({
+    id: /^[a-f0-9]{8}$/.test(c?.id || '') ? c.id : crypto.randomBytes(4).toString('hex'),
+    name: clip(c?.name, 80), role: CONTACT_ROLES.includes(c?.role) ? c.role : 'agenzia',
+    email: clip(c?.email, 120).trim(), phone: clip(c?.phone, 30).replace(/[^\d+()\- ]/g, '').trim(),
+    sentLink: isoOrEmpty(c?.sentLink), sentPin: isoOrEmpty(c?.sentPin),
+  })).filter((c) => c.name || c.email || c.phone);
+}
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest();
 const safeEqual = (a, b) => crypto.timingSafeEqual(sha(a), sha(b));
 const clip = (v, n) => String(v ?? '').slice(0, n);
@@ -205,14 +215,26 @@ export function createHubServer({
   async function api(req, res, url) {
     const ip = ipOf(req);
     // area riservata a noi: elenco e creazione eventi, solo con il PIN di amministrazione
+    const adminGate = () => {
+      if (!adminPin) { err(res, 503, 'Area riservata non attiva: manca ADMIN_PIN sul server.'); return false; }
+      if (blocked(ip)) { err(res, 429, 'Troppi tentativi. Riprova tra qualche minuto.'); return false; }
+      if (!safeEqual(req.headers['x-admin-pin'] || '', adminPin)) { noteFail(ip); err(res, 401, 'PIN non corretto.'); return false; }
+      return true;
+    };
+    const ce = /^\/api\/events\/([A-Z0-9]+)$/.exec(url.pathname);
+    if (ce && req.method === 'PUT') { // contatti dell'evento: solo per noi
+      if (!adminGate()) return;
+      const target = events[ce[1]]; if (!target) return err(res, 404, 'Evento non trovato.');
+      const b = await readJson(req);
+      target.contacts = cleanContacts(b.contacts); saveNow();
+      return send(res, 200, { contacts: target.contacts });
+    }
     if (url.pathname === '/api/events' && (req.method === 'POST' || req.method === 'GET')) {
-      if (!adminPin) return err(res, 503, 'Area riservata non attiva: manca ADMIN_PIN sul server.');
-      if (blocked(ip)) return err(res, 429, 'Troppi tentativi. Riprova tra qualche minuto.');
-      if (!safeEqual(req.headers['x-admin-pin'] || '', adminPin)) { noteFail(ip); return err(res, 401, 'PIN non corretto.'); }
+      if (!adminGate()) return;
       if (req.method === 'GET') {
         const list = Object.values(events).map((e) => ({
           code: e.code, name: e.name, date: e.date, venue: e.venue, files: e.files.length, expiresAt: e.expiresAt, purged: !!e.purged,
-          createdAt: e.createdAt, links: e.tokens, pins: e.pins,
+          createdAt: e.createdAt, links: e.tokens, pins: e.pins, contacts: e.contacts || [],
         })).sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
         return send(res, 200, { events: list });
       }
@@ -222,7 +244,7 @@ export function createHubServer({
       events[code] = {
         code, name: clip(b.name, 120) || 'Evento senza nome', date, venue: clip(b.venue, 160),
         program: '', info: { montaggio: '', inizio: '', fine: '', referente: '', telefono: '', note: '' }, timerUrl: '',
-        tokens: { agenzia: tok(), tecnico: tok(), ospite: tok() }, pins: { agenzia: pin6(), tecnico: pin6() }, files: [], log: [],
+        tokens: { agenzia: tok(), tecnico: tok(), ospite: tok() }, pins: { agenzia: pin6(), tecnico: pin6() }, files: [], log: [], contacts: [],
         createdAt: new Date().toISOString(), expiresAt: addDays(date || today(), date ? retentionDays : 60), purged: false,
       };
       saveNow();

@@ -1,4 +1,4 @@
-import { $, esc, dayShort, copyText, icons, API, eventUrl } from './util.js';
+import { $, esc, dayShort, dayLong, copyText, icons, API, eventUrl } from './util.js';
 
 /* Area riservata a noi: home a wallet con Eventi, Tools e altro. Si entra con il PIN di amministrazione. */
 const app = document.getElementById('app');
@@ -13,8 +13,8 @@ const TOOLS = [
   { name: 'Rider Evento', note: 'Scheda tecnica e rider per l\'agenzia', url: 'https://mirkoori.github.io/Rider_evento/' },
 ];
 
-async function adminApi(method, body) {
-  const r = await fetch(API + '/events', { method, headers: { 'x-admin-pin': getAdmin(), ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+async function adminApi(method, body, sub = '') {
+  const r = await fetch(API + '/events' + sub, { method, headers: { 'x-admin-pin': getAdmin(), ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
   if (r.status === 401) { setAdmin(''); throw Object.assign(new Error(j.error || 'PIN non corretto.'), { locked: true }); }
   if (!r.ok) throw new Error(j.error || 'Errore.');
@@ -53,29 +53,114 @@ function linkLine(label, url, pin, i) {
     (pin ? '<p class="msg" style="margin-top:4px">PIN: <b style="font-size:17px;letter-spacing:.15em">' + esc(pin) + '</b></p>' : '');
 }
 
+/* ---------- contatti e invio dei messaggi ---------- */
+const ROLE_NAMES = { agenzia: 'Referente agenzia', ospite: 'Relatore (sola lettura)', tecnico: 'Service' };
+const fmtSent = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+const openKeys = new Set(); // sezioni aperte, per non richiuderle quando la pagina si aggiorna
+let sendPanel = null;       // { code, id, what } messaggio in preparazione
+
+function linkFor(e, role) { return eventUrl(e.code) + '#k=' + e.links[role]; }
+function firstName(c) { return (c.name || '').trim().split(/\s+/)[0] || ''; }
+function buildMessage(e, c, what) {
+  const hi = 'Buongiorno' + (firstName(c) ? ' ' + firstName(c) : '') + ',';
+  const when = [e.date && dayLong(e.date), e.venue].filter(Boolean).join(', ');
+  const title = '"' + e.name + '"' + (when ? ' (' + when + ')' : '');
+  if (what === 'pin') {
+    return { subject: 'PIN di accesso · ' + e.name,
+      body: hi + '\necco il PIN per entrare nel portale dell\'evento ' + e.name + ':\n\n' + e.pins[c.role] + '\n\nVa scritto quando il sito lo chiede, dopo aver aperto il link che ti ho mandato a parte. È personale: non condividerlo.\n\nService audio video' };
+  }
+  if (c.role === 'ospite') {
+    return { subject: 'Programma e informazioni · ' + e.name,
+      body: hi + '\nqui trovi il programma e le informazioni dell\'evento ' + title + ':\n\n' + linkFor(e, 'ospite') + '\n\nÈ un link di sola lettura, personale: ti chiedo di non inoltrarlo.\n\nService audio video' };
+  }
+  const extra = c.role === 'tecnico'
+    ? 'Con questo link entri come service: puoi modificare il programma e caricare o scaricare i materiali.'
+    : 'Con questo link puoi caricare il programma e i materiali dell\'evento (presentazioni, video, musiche, slide tappo) e vedere le informazioni.';
+  return { subject: 'Portale evento · ' + e.name,
+    body: hi + '\necco il link del portale per l\'evento ' + title + ':\n\n' + linkFor(e, c.role) + '\n\n' + extra + '\n\nPer entrare serve anche un PIN a 6 cifre: te lo mando con un messaggio separato.\nIl link è personale: ti chiedo di non inoltrarlo. Per i relatori usa il link in sola lettura che trovi nella scheda Info del portale.\n\nService audio video' };
+}
+function waNumber(phone) {
+  let d = String(phone || '').replace(/[^\d+]/g, '');
+  if (!d) return '';
+  if (d.startsWith('+')) return d.slice(1);
+  if (d.startsWith('00')) return d.slice(2);
+  return d.length <= 11 ? '39' + d : d; // numeri italiani senza prefisso
+}
+
+function contactRow(e, c) {
+  const canPin = c.role !== 'ospite';
+  const bits = [ROLE_NAMES[c.role], c.email, c.phone].filter(Boolean).join(' · ');
+  const sent = [c.sentLink && 'link inviato ' + fmtSent(c.sentLink), c.sentPin && 'PIN inviato ' + fmtSent(c.sentPin)].filter(Boolean).join(' · ');
+  const open = sendPanel && sendPanel.code === e.code && sendPanel.id === c.id;
+  let h = '<div class="row" style="align-items:flex-start"><div class="t"><b>' + esc(c.name || c.email || c.phone) + '</b><small>' + esc(bits) + '</small>' + (sent ? '<small style="color:var(--ok);font-weight:700">' + esc(sent) + '</small>' : '') + '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn small primary" type="button" data-send="' + esc(e.code + ':' + c.id + ':link') + '">Invia link</button>' +
+    (canPin ? '<button class="btn small" type="button" data-send="' + esc(e.code + ':' + c.id + ':pin') + '">Invia PIN</button>' : '') +
+    '<button class="btn small danger" type="button" data-cdel="' + esc(e.code + ':' + c.id) + '">×</button></div></div>';
+  if (open) h += sendPanelHtml(e, c);
+  return h;
+}
+function sendPanelHtml(e, c) {
+  const m = buildMessage(e, c, sendPanel.what);
+  const label = sendPanel.what === 'pin' ? 'PIN' : 'link';
+  const chans = [];
+  if (c.email) chans.push('<button class="btn small primary" type="button" data-ch="mail">Email</button>');
+  if (c.phone) chans.push('<button class="btn small primary" type="button" data-ch="wa">WhatsApp</button><button class="btn small" type="button" data-ch="sms">SMS</button>');
+  chans.push('<button class="btn small" type="button" data-ch="copy">Copia</button><button class="btn small" type="button" data-ch="close">Chiudi</button>');
+  const tip = sendPanel.what === 'pin'
+    ? 'Mandalo con un canale diverso da quello del link (per esempio link per email e PIN su WhatsApp).'
+    : 'Il PIN va mandato a parte, con un altro messaggio: usa "Invia PIN" dopo questo.';
+  return '<div style="background:var(--bg);border-radius:16px;padding:12px;margin:8px 0 4px"><label for="sm">Messaggio con il ' + label + ' (puoi modificarlo)</label>' +
+    '<textarea id="sm" rows="9" style="font-size:13px">' + esc(m.body) + '</textarea><p class="msg" style="min-height:0;margin:4px 0 0;font-weight:500;color:var(--muted)">' + esc(tip) + '</p>' +
+    '<div class="btns" style="margin-top:8px">' + chans.join('') + '</div><p class="msg" id="smsg" role="status"></p></div>';
+}
+function contactsSection(e) {
+  const list = e.contacts || [];
+  return '<details data-key="c:' + esc(e.code) + '"' + (openKeys.has('c:' + e.code) ? ' open' : '') + ' style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">Contatti e invio (' + list.length + ')</summary>' +
+    (list.length ? list.map((c) => contactRow(e, c)).join('') : '<p class="msg" style="font-weight:500;color:var(--muted)">Aggiungi i referenti: poi mandi link e PIN con un tocco.</p>') +
+    '<form data-cform="' + esc(e.code) + '" autocomplete="off" style="margin-top:12px"><label>Nuovo contatto</label><input type="text" name="name" maxlength="80" placeholder="Nome e cognome">' +
+    '<select name="role" aria-label="Ruolo"><option value="agenzia">Referente agenzia (link + PIN)</option><option value="ospite">Relatore (sola lettura)</option><option value="tecnico">Service (link + PIN)</option></select>' +
+    '<input type="email" name="email" maxlength="120" placeholder="Email"><input type="tel" name="phone" maxlength="30" placeholder="Telefono (anche WhatsApp)">' +
+    '<div class="btns"><button class="btn small primary" type="submit">Aggiungi contatto</button></div><p class="msg" data-cmsg></p></form></details>';
+}
+
 function eventCard(e, n) {
   const base = eventUrl(e.code) + '#k=';
   const meta = [e.date && dayShort(e.date), e.venue].filter(Boolean).join(' · ');
   return '<div class="card"><div class="row"><div class="t"><b>' + esc(e.name) + '</b><small>' + esc(meta || 'Senza data') + ' · ' + e.files + ' file' + (e.purged ? ' · concluso' : '') + '</small></div>' +
     (e.purged ? '' : '<button class="btn small primary" type="button" data-open="' + esc(e.code) + '">Apri</button>') + '</div>' +
-    '<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">Link e PIN</summary>' +
+    contactsSection(e) +
+    '<details data-key="l:' + esc(e.code) + '"' + (openKeys.has('l:' + e.code) ? ' open' : '') + ' style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">Link e PIN</summary>' +
     linkLine('Agenzia', base + e.links.agenzia, e.pins.agenzia, n + 'a') + linkLine('Noi (service)', base + e.links.tecnico, e.pins.tecnico, n + 't') + linkLine('Relatori (sola lettura)', base + e.links.ospite, '', n + 'o') +
     '<p class="msg" style="font-weight:500;color:var(--muted)">Manda il PIN in un messaggio separato dal link.</p></details></div>';
 }
 
-function eventi() {
+async function saveContacts(code, mutate) {
+  const e = events.find((x) => x.code === code); if (!e) return;
+  const next = mutate((e.contacts || []).map((c) => ({ ...c })));
+  const j = await adminApi('PUT', { contacts: next }, '/' + code);
+  e.contacts = j.contacts;
+}
+function rerender() { // aggiorna la pagina senza perdere le sezioni aperte
+  document.querySelectorAll('details[data-key]').forEach((d) => { d.open ? openKeys.add(d.dataset.key) : openKeys.delete(d.dataset.key); });
+  eventi(true);
+}
+
+function eventi(keep) {
+  const keepForm = keep ? ['#nn', '#nd', '#nv'].map((q) => ($(q) ? $(q).value : '')) : null;
   app.innerHTML = hero('var(--c1)', '01 · Eventi', 'Eventi', 'Un evento, un link, un portale', true) + '<div class="list">' +
     '<form class="card" id="nf" autocomplete="off"><h3>Nuovo evento</h3><label for="nn">Nome evento</label><input type="text" id="nn" required maxlength="120" placeholder="Es. Congresso regionale">' +
     '<label for="nd">Data</label><input type="date" id="nd"><label for="nv">Location</label><input type="text" id="nv" maxlength="160" placeholder="Es. Hotel, sala">' +
     '<div class="btns"><button class="btn primary" type="submit">Crea evento</button></div><p class="msg" id="nm" role="status"></p></form>' +
     (events.length ? events.map(eventCard).join('') : '<div class="card"><p class="empty">Nessun evento ancora.</p></div>') + '</div>';
-  $('#nf').addEventListener('submit', async (e) => {
-    e.preventDefault(); const m = $('#nm'); m.className = 'msg'; m.textContent = 'Creo l\'evento…';
+  if (keepForm) { $('#nn').value = keepForm[0]; $('#nd').value = keepForm[1]; $('#nv').value = keepForm[2]; }
+  $('#nf').addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const m = $('#nm'); m.className = 'msg'; m.textContent = 'Creo l\'evento…';
     try {
       await adminApi('POST', { name: $('#nn').value, date: $('#nd').value, venue: $('#nv').value });
-      events = (await adminApi('GET')).events; eventi();
-      const d = $('details'); if (d) d.open = true; // il PIN appena creato si vede nel primo evento
-      const mm = $('#nm'); mm.className = 'msg ok'; mm.textContent = 'Evento creato: copia link e PIN qui sotto.';
+      events = (await adminApi('GET')).events;
+      if (events[0]) openKeys.add('l:' + events[0].code); // il PIN appena creato si vede subito nel primo evento
+      eventi();
+      const mm = $('#nm'); mm.className = 'msg ok'; mm.textContent = 'Evento creato: aggiungi i contatti o copia link e PIN qui sotto.';
     } catch (x) { m.className = 'msg err'; m.textContent = x.message; if (x.locked) lock(x.message); }
   });
   app.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
@@ -85,6 +170,41 @@ function eventi() {
     const e = events.find((x) => x.code === b.dataset.open); if (!e) return;
     try { sessionStorage.setItem('hubpin:' + e.code, e.pins.tecnico); } catch {} // entriamo senza ridigitare il PIN
     location.href = eventUrl(e.code) + '#k=' + e.links.tecnico;
+  }));
+  // contatti: aggiunta
+  app.querySelectorAll('form[data-cform]').forEach((f) => f.addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const code = f.dataset.cform, m = f.querySelector('[data-cmsg]'), d = new FormData(f);
+    const c = { name: String(d.get('name') || '').trim(), role: d.get('role'), email: String(d.get('email') || '').trim(), phone: String(d.get('phone') || '').trim() };
+    if (!c.name && !c.email && !c.phone) { m.className = 'msg err'; m.textContent = 'Scrivi almeno un nome, un\'email o un telefono.'; return; }
+    if (c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) { m.className = 'msg err'; m.textContent = 'L\'email non sembra corretta.'; return; }
+    try { await saveContacts(code, (l) => [...l, c]); openKeys.add('c:' + code); rerender(); } catch (x) { m.className = 'msg err'; m.textContent = x.message; }
+  }));
+  app.querySelectorAll('[data-cdel]').forEach((b) => b.addEventListener('click', async () => {
+    if (!b.dataset.arm) { b.dataset.arm = '1'; b.textContent = 'Elimina?'; setTimeout(() => { delete b.dataset.arm; b.textContent = '×'; }, 3000); return; }
+    const [code, id] = b.dataset.cdel.split(':');
+    try { await saveContacts(code, (l) => l.filter((c) => c.id !== id)); if (sendPanel && sendPanel.id === id) sendPanel = null; rerender(); } catch { b.textContent = 'Errore'; }
+  }));
+  app.querySelectorAll('[data-send]').forEach((b) => b.addEventListener('click', () => {
+    const [code, id, what] = b.dataset.send.split(':');
+    sendPanel = sendPanel && sendPanel.code === code && sendPanel.id === id && sendPanel.what === what ? null : { code, id, what };
+    openKeys.add('c:' + code); rerender();
+  }));
+  if (sendPanel) wirePanel();
+}
+function wirePanel() {
+  const e = events.find((x) => x.code === sendPanel.code), c = e && (e.contacts || []).find((x) => x.id === sendPanel.id);
+  if (!c) { sendPanel = null; return; }
+  app.querySelectorAll('[data-ch]').forEach((b) => b.addEventListener('click', async () => {
+    const text = $('#sm').value, m = buildMessage(e, c, sendPanel.what), msg = $('#smsg'), ch = b.dataset.ch;
+    if (ch === 'close') { sendPanel = null; return rerender(); }
+    if (ch === 'copy') { const ok = await copyText(text); msg.className = 'msg ' + (ok ? 'ok' : 'err'); msg.textContent = ok ? 'Messaggio copiato.' : 'Non riesco a copiare: selezionalo a mano.'; return; }
+    const url = ch === 'mail' ? 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(text)
+      : ch === 'wa' ? 'https://wa.me/' + waNumber(c.phone) + '?text=' + encodeURIComponent(text)
+      : 'sms:' + c.phone.replace(/[^\d+]/g, '') + '?&body=' + encodeURIComponent(text);
+    window.open(url, '_blank'); // subito, nel gesto dell'utente: altrimenti il telefono blocca l'apertura
+    // segno l'invio come "preparato": il messaggio parte quando lo confermi nell'app di posta o di messaggi
+    try { const key = sendPanel.what === 'pin' ? 'sentPin' : 'sentLink'; const now = new Date().toISOString(); await saveContacts(e.code, (l) => l.map((x) => (x.id === c.id ? { ...x, [key]: now } : x))); } catch {}
+    sendPanel = null; rerender();
   }));
 }
 

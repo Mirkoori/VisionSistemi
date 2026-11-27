@@ -62,7 +62,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* moduli e pulsanti */
 label { display: block; font-weight: 800; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; margin: 14px 0 6px; }
 label:first-child { margin-top: 0; }
-input[type=text], input[type=date], input[type=time], input[type=tel], input[type=password], input[type=url], textarea, select {
+input[type=text], input[type=date], input[type=time], input[type=tel], input[type=password], input[type=url], input[type=email], textarea, select {
   width: 100%; border: 2px solid var(--line); background: var(--card); border-radius: 14px; padding: 11px 13px; font-weight: 600;
 }
 textarea { min-height: 150px; resize: vertical; }

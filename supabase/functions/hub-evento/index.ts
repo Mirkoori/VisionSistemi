@@ -17,6 +17,8 @@ const VIEWABLE = new Set(["pdf", "png", "jpg", "jpeg", "webp", "gif"]);
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_RE = /^[A-Z0-9]{4,12}$/;
 const EDIT = new Set(["agenzia", "tecnico"]);
+const CONTACT_ROLES = ["agenzia", "ospite", "tecnico"];
+const isoOrEmpty = (v: unknown) => (/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(v || "")) ? String(v) : "");
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -98,6 +100,17 @@ async function adminOk(req: Request, ip: string): Promise<Response | null> {
   if (!ok) { noteFail(ip); return err(401, "PIN non corretto."); }
   return null;
 }
+// deno-lint-ignore no-explicit-any
+function cleanContacts(list: any) {
+  // deno-lint-ignore no-explicit-any
+  return (Array.isArray(list) ? list : []).slice(0, 30).map((c: any) => ({
+    id: /^[a-f0-9]{8}$/.test(c?.id || "") ? c.id : hex(randBytes(4)),
+    name: clip(c?.name, 80), role: CONTACT_ROLES.includes(c?.role) ? c.role : "agenzia",
+    email: clip(c?.email, 120).trim(), phone: clip(c?.phone, 30).replace(/[^\d+()\- ]/g, "").trim(),
+    sentLink: isoOrEmpty(c?.sentLink), sentPin: isoOrEmpty(c?.sentPin),
+    // deno-lint-ignore no-explicit-any
+  })).filter((c: any) => c.name || c.email || c.phone);
+}
 async function readJson(req: Request) { try { return await req.json(); } catch { return {}; } }
 
 Deno.serve(async (req) => {
@@ -107,13 +120,21 @@ Deno.serve(async (req) => {
     const path = url.pathname.replace(/^\/(functions\/v1\/)?hub-evento/, "") || "/";
     const ip = ipOf(req);
 
+    const ce = /^\/events\/([A-Z0-9]+)$/.exec(path);
+    if (ce && req.method === "PUT") { // contatti dell'evento: solo per noi
+      const bad = await adminOk(req, ip); if (bad) return bad;
+      const target = await load(ce[1]); if (!target) return err(404, "Evento non trovato.");
+      const b = await readJson(req);
+      target.contacts = cleanContacts(b.contacts); await save(target);
+      return json(200, { contacts: target.contacts });
+    }
     if (path === "/events" && (req.method === "GET" || req.method === "POST")) {
       const bad = await adminOk(req, ip); if (bad) return bad;
       if (req.method === "GET") {
         const { data } = await sb.from("hub_events").select("data");
         const all: Ev[] = (data || []).map((r) => r.data);
         for (const ev of all) if (!ev.purged && today() > ev.expiresAt) await purge(ev);
-        const list = all.map((e) => ({ code: e.code, name: e.name, date: e.date, venue: e.venue, files: e.files.length, expiresAt: e.expiresAt, purged: !!e.purged, createdAt: e.createdAt, links: e.tokens, pins: e.pins }))
+        const list = all.map((e) => ({ code: e.code, name: e.name, date: e.date, venue: e.venue, files: e.files.length, expiresAt: e.expiresAt, purged: !!e.purged, createdAt: e.createdAt, links: e.tokens, pins: e.pins, contacts: e.contacts || [] }))
           .sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
         return json(200, { events: list });
       }
@@ -127,7 +148,7 @@ Deno.serve(async (req) => {
       const ev: Ev = {
         code, name: clip(b.name, 120) || "Evento senza nome", date, venue: clip(b.venue, 160),
         program: "", info: { montaggio: "", inizio: "", fine: "", referente: "", telefono: "", note: "" }, timerUrl: "",
-        tokens: { agenzia: tok(), tecnico: tok(), ospite: tok() }, pins: { agenzia: pin6(), tecnico: pin6() }, files: [], log: [],
+        tokens: { agenzia: tok(), tecnico: tok(), ospite: tok() }, pins: { agenzia: pin6(), tecnico: pin6() }, files: [], log: [], contacts: [],
         createdAt: new Date().toISOString(), expiresAt: addDays(date || today(), date ? RETENTION_DAYS : 60), purged: false,
       };
       await save(ev);
