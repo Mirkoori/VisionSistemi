@@ -1,0 +1,16 @@
+# Esempio per systemd: /etc/systemd/system/hub-evento.service
+[Unit]
+Description=Hub Evento
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/hub-evento
+EnvironmentFile=/opt/hub-evento/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+User=hub
+# Il server scrive solo nella cartella data/
+ReadWritePaths=/opt/hub-evento/data
+
+[Install]
+WantedBy=multi-user.target

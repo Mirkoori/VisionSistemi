@@ -1,0 +1,7 @@
+# Esempio con Caddy: HTTPS automatico. Sostituisci l'indirizzo con il vostro.
+eventi.example.it {
+	request_body {
+		max_size 600MB
+	}
+	reverse_proxy localhost:3000
+}
