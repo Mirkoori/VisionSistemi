@@ -24,7 +24,7 @@ async function adminApi(method, body) {
 function lock(msg) {
   app.innerHTML = '<div class="hero plain"><span class="tag">Service audio video</span><h1 class="big">Hub<br>Evento</h1>' +
     '<p class="sub">Area riservata</p></div><div class="list"><form class="card" id="lf" autocomplete="off"><label for="ap">PIN di amministrazione</label>' +
-    '<input type="password" id="ap" inputmode="numeric" autocomplete="off" required><div class="btns"><button class="btn primary" type="submit">Entra</button></div>' +
+    '<input type="password" id="ap" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required><div class="btns"><button class="btn primary" type="submit">Entra</button></div>' +
     '<p class="msg' + (msg ? ' err' : '') + '" id="lm" role="status">' + esc(msg || '') + '</p></form>' +
     '<div class="card"><h3>Hai un link?</h3><p>Apri il link che ti ha mandato l\'agenzia o il service: è l\'accesso al tuo evento.</p></div></div>';
   $('#lf').addEventListener('submit', async (e) => {
