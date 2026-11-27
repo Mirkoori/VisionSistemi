@@ -12,7 +12,7 @@ const TOOLS = [
   { name: 'Palco Timer', note: 'Timer per sala, relatore e moderatore', url: 'https://mirkoori.github.io/Timer/' },
   { name: 'PPT Cavalieri', note: 'Cavalieri elettronici: una slide per relatore dal programma', url: 'https://mirkoori.github.io/pptcavalieri/' },
   { name: 'Player Evento', note: 'Regia: materiali, tappi e output su schermi remoti', url: 'https://mirkoori.github.io/playerevento/regia1.html' },
-  { name: 'PPT Playlist', note: 'Windows: apre le presentazioni in sequenza (cartella su Drive)', url: 'https://drive.google.com/drive/folders/1MImEFecH-ujF4FV1UMWUlkTanyYmcHnf', cta: 'Vai a Drive',
+  { id: 'ppt-playlist', name: 'PPT Playlist', note: 'Windows: apre le presentazioni in sequenza (cartella su Drive)', url: 'https://drive.google.com/drive/folders/1MImEFecH-ujF4FV1UMWUlkTanyYmcHnf', cta: 'Vai a Drive',
     help: [
       'Serve Windows con PowerPoint installato.',
       'Da Drive scarica AVVIA.bat e PPT-Playlist.ps1 e mettili nella stessa cartella dei file .pptx dell\'evento.',
@@ -214,8 +214,17 @@ function wirePanel() {
 
 function tools() {
   app.innerHTML = hero('var(--c2)', '02 · Tools', 'Tools', 'Gli strumenti del service', true) + '<div class="list"><div class="card">' +
-    TOOLS.map((t) => '<div class="row"><div class="t"><b>' + esc(t.name) + '</b><small>' + esc(t.note) + '</small></div><a class="btn small primary" href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.cta || 'Apri') + '</a></div>' +
-      (t.help ? '<ol class="help" style="margin:2px 0 14px;padding-left:20px;font-size:13px;line-height:1.5;font-weight:500">' + t.help.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ol>' : '')).join('') + '</div></div>';
+    TOOLS.map((t) => '<div class="row"><div class="t"><b>' + esc(t.name) + '</b><small>' + esc(t.note) + '</small></div>' +
+      (t.help ? '<a class="btn small primary" href="#tool/' + esc(t.id) + '">Apri</a>' : '<a class="btn small primary" href="' + esc(t.url) + '" target="_blank" rel="noopener">Apri</a>') + '</div>').join('') + '</div></div>';
+}
+
+// pagina del singolo tool: istruzioni base e poi il pulsante per andare al programma
+function toolPage(id) {
+  const t = TOOLS.find((x) => x.id === id);
+  if (!t) { location.hash = '#tools'; return; }
+  app.innerHTML = hero('var(--c2)', 'Tools', t.name, t.note, true).replace('data-go=""', 'data-go="tools"') + '<div class="list"><div class="card"><h3>Come si usa</h3>' +
+    '<ol class="help" style="margin:6px 0 14px;padding-left:20px;font-size:14px;line-height:1.55;font-weight:500">' + t.help.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ol>' +
+    '<div class="btns"><a class="btn primary" href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.cta || 'Apri') + '</a></div></div></div>';
 }
 
 function altro() {
@@ -225,7 +234,7 @@ function altro() {
 const routes = { eventi, tools, altro };
 function route() {
   const r = location.hash.replace('#', '');
-  (routes[r] || home)();
+  if (r.startsWith('tool/')) toolPage(r.slice(5)); else (routes[r] || home)();
   window.scrollTo(0, 0);
 }
 app.addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) location.hash = b.dataset.go; });
