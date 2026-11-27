@@ -12,7 +12,16 @@ const TOOLS = [
   { name: 'Palco Timer', note: 'Timer per sala, relatore e moderatore', url: 'https://mirkoori.github.io/Timer/' },
   { name: 'PPT Cavalieri', note: 'Cavalieri elettronici: una slide per relatore dal programma', url: 'https://mirkoori.github.io/pptcavalieri/' },
   { name: 'Player Evento', note: 'Regia: materiali, tappi e output su schermi remoti', url: 'https://mirkoori.github.io/playerevento/regia1.html' },
-  { name: 'PPT Playlist', note: 'Windows: apre le presentazioni in sequenza (cartella su Drive)', url: 'https://drive.google.com/drive/folders/1MImEFecH-ujF4FV1UMWUlkTanyYmcHnf' },
+  { name: 'PPT Playlist', note: 'Windows: apre le presentazioni in sequenza (cartella su Drive)', url: 'https://drive.google.com/drive/folders/1MImEFecH-ujF4FV1UMWUlkTanyYmcHnf', cta: 'Vai a Drive',
+    help: [
+      'Serve Windows con PowerPoint installato.',
+      'Da Drive scarica AVVIA.bat e PPT-Playlist.ps1 e mettili nella stessa cartella dei file .pptx dell\'evento.',
+      'Numera i file nell\'ordine di presentazione: 1 Apertura, 2 Relatore, 10 Chiusura.',
+      'Doppio clic su AVVIA.bat: si apre la lista. Prossima (Ctrl+F9) apre la presentazione successiva a schermo intero.',
+      'Chiudi corrente (Ctrl+F10). Ctrl+F11 riporta in primo piano la finestra del programma.',
+      'Doppio clic su un file della lista: lo apre subito (se il relatore sbaglia ordine).',
+      'Attenzione: ogni apertura chiude tutte le finestre di PowerPoint. Non tenere altri file aperti.',
+    ] },
   { name: 'Rider Evento', note: 'Scheda tecnica e rider per l\'agenzia', url: 'https://mirkoori.github.io/Rider_evento/' },
 ];
 
@@ -205,7 +214,8 @@ function wirePanel() {
 
 function tools() {
   app.innerHTML = hero('var(--c2)', '02 · Tools', 'Tools', 'Gli strumenti del service', true) + '<div class="list"><div class="card">' +
-    TOOLS.map((t) => '<div class="row"><div class="t"><b>' + esc(t.name) + '</b><small>' + esc(t.note) + '</small></div><a class="btn small primary" href="' + esc(t.url) + '" target="_blank" rel="noopener">Apri</a></div>').join('') + '</div></div>';
+    TOOLS.map((t) => '<div class="row"><div class="t"><b>' + esc(t.name) + '</b><small>' + esc(t.note) + '</small></div><a class="btn small primary" href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.cta || 'Apri') + '</a></div>' +
+      (t.help ? '<ol class="help" style="margin:2px 0 14px;padding-left:20px;font-size:13px;line-height:1.5;font-weight:500">' + t.help.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ol>' : '')).join('') + '</div></div>';
 }
 
 function altro() {
