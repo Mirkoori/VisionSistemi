@@ -117,25 +117,33 @@ function sendPanelHtml(e, c) {
     '<textarea id="sm" rows="9" style="font-size:13px">' + esc(m.body) + '</textarea><p class="msg" style="min-height:0;margin:4px 0 0;font-weight:500;color:var(--muted)">' + esc(tip) + '</p>' +
     '<div class="btns" style="margin-top:8px">' + chans.join('') + '</div><p class="msg" id="smsg" role="status"></p></div>';
 }
+const SEC = 'margin:18px 0 6px;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase';
 function contactsSection(e) {
   const list = e.contacts || [];
-  return '<details data-key="c:' + esc(e.code) + '"' + (openKeys.has('c:' + e.code) ? ' open' : '') + ' style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">Contatti e invio (' + list.length + ')</summary>' +
+  return '<div class="card"><h3 style="margin-top:0">Contatti e invio (' + list.length + ')</h3>' +
     (list.length ? list.map((c) => contactRow(e, c)).join('') : '<p class="msg" style="font-weight:500;color:var(--muted)">Aggiungi i referenti: poi mandi link e PIN in un unico messaggio.</p>') +
     '<form data-cform="' + esc(e.code) + '" autocomplete="off" style="margin-top:12px"><label>Nuovo contatto</label><input type="text" name="agency" maxlength="80" placeholder="Nome agenzia" value="' + esc(([...list].reverse().find((c) => c.agency) || {}).agency || '') + '"><input type="text" name="name" maxlength="80" placeholder="Nome e cognome">' +
     '<select name="role" aria-label="Ruolo"><option value="agenzia">Referente agenzia (link + PIN)</option><option value="ospite">Relatore (sola lettura)</option><option value="tecnico">Service (link + PIN)</option></select>' +
     '<input type="email" name="email" maxlength="120" placeholder="Email"><input type="tel" name="phone" maxlength="30" placeholder="Telefono (anche WhatsApp)">' +
-    '<div class="btns"><button class="btn small primary" type="submit">Aggiungi contatto</button></div><p class="msg" data-cmsg></p></form></details>';
+    '<div class="btns"><button class="btn small primary" type="submit">Aggiungi contatto</button></div><p class="msg" data-cmsg></p></form></div>';
+}
+function linksSection(e) {
+  const base = eventUrl(e.code) + '#k=';
+  return '<div class="card"><h3 style="margin-top:0">Link e PIN</h3>' +
+    linkLine('Agenzia', base + e.links.agenzia, e.pins.agenzia, 'a') + linkLine('Noi (service)', base + e.links.tecnico, e.pins.tecnico, 't') + linkLine('Relatori (sola lettura)', base + e.links.ospite, '', 'o') +
+    '<p class="msg" style="font-weight:500;color:var(--muted)">Link e PIN vanno insieme nel messaggio: usa Invia dai Contatti.</p></div>';
 }
 
-function eventCard(e, n) {
-  const base = eventUrl(e.code) + '#k=';
-  const meta = [e.date && dayShort(e.date), e.venue].filter(Boolean).join(' · ');
-  return '<div class="card"><div class="row"><div class="t"><b>' + esc(e.name) + '</b><small>' + esc(meta || 'Senza data') + ' · ' + e.files + ' file' + (e.purged ? ' · concluso' : '') + '</small></div>' +
-    (e.purged ? '' : '<button class="btn small primary" type="button" data-open="' + esc(e.code) + '">Apri</button>') + '</div>' +
-    contactsSection(e) +
-    '<details data-key="l:' + esc(e.code) + '"' + (openKeys.has('l:' + e.code) ? ' open' : '') + ' style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">Link e PIN</summary>' +
-    linkLine('Agenzia', base + e.links.agenzia, e.pins.agenzia, n + 'a') + linkLine('Noi (service)', base + e.links.tecnico, e.pins.tecnico, n + 't') + linkLine('Relatori (sola lettura)', base + e.links.ospite, '', n + 'o') +
-    '<p class="msg" style="font-weight:500;color:var(--muted)">Link e PIN vanno insieme nel messaggio: usa Invia dalla sezione Contatti.</p></details></div>';
+// pagina di un evento: ci si arriva toccando la card nella lista
+function eventoPage(code) {
+  const e = events.find((x) => x.code === code);
+  if (!e) { location.hash = '#eventi'; return; }
+  const meta = [e.date && dayLong(e.date), e.venue].filter(Boolean).join(' · ');
+  app.innerHTML = hero('var(--c1)', 'Evento', e.name, meta || 'Senza data', true).replace('data-go=""', 'data-go="eventi"') + '<div class="list">' +
+    (e.purged ? '<div class="card"><p class="empty">Evento concluso: i materiali sono stati cancellati.</p></div>'
+      : '<div class="card"><div class="btns" style="margin-top:0"><button class="btn primary" type="button" data-open="' + esc(e.code) + '">Entra nell\'evento</button></div><p class="msg" style="font-weight:500;color:var(--muted)">' + e.files + ' file caricati · scade il ' + esc(dayShort(e.expiresAt)) + '</p></div>') +
+    contactsSection(e) + linksSection(e) + '</div>';
+  wire();
 }
 
 async function saveContacts(code, mutate) {
@@ -144,29 +152,38 @@ async function saveContacts(code, mutate) {
   const j = await adminApi('PUT', { contacts: next }, '/' + code);
   e.contacts = j.contacts;
 }
-function rerender() { // aggiorna la pagina senza perdere le sezioni aperte
-  document.querySelectorAll('details[data-key]').forEach((d) => { d.open ? openKeys.add(d.dataset.key) : openKeys.delete(d.dataset.key); });
-  eventi(true);
+function rerender() { // aggiorna la pagina dell'evento
+  const m = /^#evento\/([A-Z0-9]+)$/.exec(location.hash);
+  if (m) eventoPage(m[1]); else route();
 }
 
-function eventi(keep) {
-  const keepForm = keep ? ['#nn', '#nd', '#nv'].map((q) => ($(q) ? $(q).value : '')) : null;
+function eventi() {
   app.innerHTML = hero('var(--c1)', '01 · Eventi', 'Eventi', 'Un evento, un link, un portale', true) + '<div class="list">' +
-    '<form class="card" id="nf" autocomplete="off"><h3>Nuovo evento</h3><label for="nn">Nome evento</label><input type="text" id="nn" required maxlength="120" placeholder="Es. Congresso regionale">' +
+    '<a class="btn primary" href="#nuovo" style="display:block;text-align:center;margin-bottom:6px">Crea evento</a>' +
+    (events.length ? events.map((e) => {
+      const meta = [e.date && dayShort(e.date), e.venue].filter(Boolean).join(' · ');
+      return '<a class="card" href="#evento/' + esc(e.code) + '" style="display:block;text-decoration:none;color:inherit"><b style="font-size:22px;line-height:1.15;display:block">' + esc(e.name) + '</b>' +
+        '<small style="display:block;margin-top:4px;color:var(--muted);font-weight:600">' + esc(meta || 'Senza data') + (e.purged ? ' · concluso' : '') + '</small></a>';
+    }).join('') : '<div class="card"><p class="empty">Nessun evento ancora.</p></div>') + '</div>';
+}
+
+function nuovoEvento() {
+  app.innerHTML = hero('var(--c1)', 'Nuovo', 'Crea evento', 'Poi aggiungi contatti e invii il link', true).replace('data-go=""', 'data-go="eventi"') + '<div class="list">' +
+    '<form class="card" id="nf" autocomplete="off"><label for="nn">Nome evento</label><input type="text" id="nn" required maxlength="120" placeholder="Es. Congresso regionale">' +
     '<label for="nd">Data</label><input type="date" id="nd"><label for="nv">Location</label><input type="text" id="nv" maxlength="160" placeholder="Es. Hotel, sala">' +
-    '<div class="btns"><button class="btn primary" type="submit">Crea evento</button></div><p class="msg" id="nm" role="status"></p></form>' +
-    (events.length ? events.map(eventCard).join('') : '<div class="card"><p class="empty">Nessun evento ancora.</p></div>') + '</div>';
-  if (keepForm) { $('#nn').value = keepForm[0]; $('#nd').value = keepForm[1]; $('#nv').value = keepForm[2]; }
+    '<div class="btns"><button class="btn primary" type="submit">Crea evento</button></div><p class="msg" id="nm" role="status"></p></form></div>';
   $('#nf').addEventListener('submit', async (ev) => {
     ev.preventDefault(); const m = $('#nm'); m.className = 'msg'; m.textContent = 'Creo l\'evento…';
     try {
-      await adminApi('POST', { name: $('#nn').value, date: $('#nd').value, venue: $('#nv').value });
+      const r = await adminApi('POST', { name: $('#nn').value, date: $('#nd').value, venue: $('#nv').value });
       events = (await adminApi('GET')).events;
-      if (events[0]) openKeys.add('l:' + events[0].code); // il PIN appena creato si vede subito nel primo evento
-      eventi();
-      const mm = $('#nm'); mm.className = 'msg ok'; mm.textContent = 'Evento creato: aggiungi i contatti o copia link e PIN qui sotto.';
+      location.hash = '#evento/' + r.code;
     } catch (x) { m.className = 'msg err'; m.textContent = x.message; if (x.locked) lock(x.message); }
   });
+}
+
+// collegamenti dei pulsanti nella pagina dell'evento
+function wire() {
   app.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
     const ok = await copyText($('#' + b.dataset.copy).value); b.textContent = ok ? 'Copiato' : 'Copia a mano'; setTimeout(() => { b.textContent = 'Copia'; }, 2000);
   }));
@@ -234,7 +251,10 @@ function altro() {
 const routes = { eventi, tools, altro };
 function route() {
   const r = location.hash.replace('#', '');
-  if (r.startsWith('tool/')) toolPage(r.slice(5)); else (routes[r] || home)();
+  if (r.startsWith('tool/')) toolPage(r.slice(5));
+  else if (r.startsWith('evento/')) eventoPage(r.slice(7));
+  else if (r === 'nuovo') nuovoEvento();
+  else (routes[r] || home)();
   window.scrollTo(0, 0);
 }
 app.addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) location.hash = b.dataset.go; });
