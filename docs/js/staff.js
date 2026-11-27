@@ -9,7 +9,7 @@ let events = [];
 
 // Strumenti nostri: aggiungere qui una riga per ogni nuovo tool.
 const TOOLS = [
-  { name: 'Palco Timer', note: 'Timer per sala, relatore e moderatore', url: 'https://mirkoori.github.io/timer/' },
+  { name: 'Palco Timer', note: 'Timer per sala, relatore e moderatore', url: 'https://mirkoori.github.io/Timer/' },
   { name: 'Rider Evento', note: 'Scheda tecnica e rider per l\'agenzia', url: 'https://mirkoori.github.io/Rider_evento/' },
 ];
 
