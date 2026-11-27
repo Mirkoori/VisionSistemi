@@ -45,6 +45,25 @@ function hero(color, section, title, sub, back) {
 const isStaff = () => { try { return !!sessionStorage.getItem('hub:admin'); } catch { return false; } }; // si è entrati dall'area riservata
 const roleLabel = { agenzia: 'Agenzia', tecnico: 'Service', ospite: 'Sola lettura' };
 
+
+/* contatti dell'evento (inseriti dall'area riservata): li vediamo solo noi */
+const ROLE_SHORT = { agenzia: 'Agenzia', ospite: 'Relatore', tecnico: 'Service' };
+async function loadStaffContacts() {
+  const box = $('#staffC'); if (!box) return;
+  try {
+    const r = await fetch(API + '/events', { headers: { 'x-admin-pin': sessionStorage.getItem('hub:admin') || '' } });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Errore');
+    const list = ((j.events || []).find((e) => e.code === code) || {}).contacts || [];
+    if (!list.length) { box.innerHTML = '<h3>Contatti</h3><p class="empty">Nessun contatto. Aggiungili dalla home, in Eventi.</p>'; return; }
+    const groups = new Map();
+    for (const c of list) { const k = c.agency || 'Senza agenzia'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); }
+    box.innerHTML = '<h3>Contatti</h3><p>Visibili solo a noi.</p>' + [...groups].map(([ag, cs]) => '<p style="margin:12px 0 2px;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase">' + esc(ag) + '</p>' +
+      cs.map((c) => '<div class="row"><div class="t"><b>' + esc(c.name || c.email || c.phone) + '</b><small>' + esc(ROLE_SHORT[c.role] || '') + '</small>' +
+        (c.phone ? '<small><a href="tel:' + esc(c.phone.replace(/[^\d+]/g, '')) + '">' + esc(c.phone) + '</a></small>' : '') +
+        (c.email ? '<small><a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a></small>' : '') + '</div></div>').join('')).join('');
+  } catch (x) { box.innerHTML = '<h3>Contatti</h3><p class="empty">Non riesco a caricarli: ' + esc(x.message) + '</p>'; }
+}
+
 /* ---------- schermata principale ---------- */
 function home() {
   const info = [ev.venue, [ev.info.inizio && 'inizio ' + ev.info.inizio, ev.info.fine && 'fine ' + ev.info.fine].filter(Boolean).join(' · ')].filter(Boolean).join(' · ');
@@ -221,6 +240,7 @@ function info() {
       INFO_FIELDS.map(([k, l, t]) => '<label for="i_' + k + '">' + l + '</label><input type="' + t + '" id="i_' + k + '" maxlength="160" value="' + esc(i[k]) + '">').join('') +
       '<label for="i_note">Note</label><textarea id="i_note" style="min-height:90px">' + esc(i.note) + '</textarea>' +
       '<div class="btns"><button class="btn primary" type="button" id="saveI">Salva</button></div><p class="msg" id="msgI" role="status"></p></div>';
+    if (isStaff()) h += '<div class="card" id="staffC"><h3>Contatti</h3><p class="empty">Carico i contatti…</p></div>';
     h += '<div class="card"><h3>Condividi</h3><p>Chi ha un link può entrare. Per i relatori usa quello in sola lettura.</p>' +
       linkRow('Link per i relatori', 'Sola lettura: programma e informazioni.', ev.links.ospite) +
       linkRow('Link per l\'agenzia', 'Può caricare e modificare. Non girarlo ai relatori.', ev.links.agenzia) +
@@ -237,6 +257,7 @@ function info() {
     h += '<div class="card">' + (rows.length ? '<dl class="kv">' + rows.map((r) => '<dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd>').join('') + '</dl>' : '<p class="empty">Nessuna informazione inserita.</p>') + '</div>';
   }
   app.innerHTML = h + '</div>';
+  if (canEdit() && isStaff()) loadStaffContacts();
   app.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
     const ok = await copyText(b.dataset.copy); b.textContent = ok ? 'Copiato' : 'Copia a mano'; setTimeout(() => { b.textContent = 'Copia'; }, 2000);
   }));
