@@ -99,7 +99,7 @@ function contactRow(e, c) {
   const bits = [c.agency, ROLE_NAMES[c.role], c.email, c.phone].filter(Boolean).join(' · ');
   const sent = c.sentLink ? 'inviato ' + fmtSent(c.sentLink) : '';
   const open = sendPanel && sendPanel.code === e.code && sendPanel.id === c.id;
-  let h = '<div class="row" style="align-items:flex-start"><div class="t"><b>' + esc(c.name || c.email || c.phone) + '</b><small>' + esc(bits) + '</small>' + (sent ? '<small style="color:var(--ok);font-weight:700">' + esc(sent) + '</small>' : '') + '</div>' +
+  let h = '<div class="row" style="align-items:flex-start"><div class="t"><b>' + esc(c.name || c.email || c.phone) + '</b><small>' + esc(bits) + '</small>' + (sent ? '<small style="display:block;color:var(--ok);font-weight:700">' + esc(sent) + '</small>' : '') + '</div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn small primary" type="button" data-send="' + esc(e.code + ':' + c.id + ':link') + '">Invia</button>' +
     '<button class="btn small danger" type="button" data-cdel="' + esc(e.code + ':' + c.id) + '">×</button></div></div>';
   if (open) h += sendPanelHtml(e, c);
@@ -117,32 +117,51 @@ function sendPanelHtml(e, c) {
     '<textarea id="sm" rows="9" style="font-size:13px">' + esc(m.body) + '</textarea><p class="msg" style="min-height:0;margin:4px 0 0;font-weight:500;color:var(--muted)">' + esc(tip) + '</p>' +
     '<div class="btns" style="margin-top:8px">' + chans.join('') + '</div><p class="msg" id="smsg" role="status"></p></div>';
 }
-const SEC = 'margin:18px 0 6px;font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase';
-function contactsSection(e) {
-  const list = e.contacts || [];
-  return '<div class="card"><h3 style="margin-top:0">Contatti e invio (' + list.length + ')</h3>' +
-    (list.length ? list.map((c) => contactRow(e, c)).join('') : '<p class="msg" style="font-weight:500;color:var(--muted)">Aggiungi i referenti: poi mandi link e PIN in un unico messaggio.</p>') +
-    '<form data-cform="' + esc(e.code) + '" autocomplete="off" style="margin-top:12px"><label>Nuovo contatto</label><input type="text" name="agency" maxlength="80" placeholder="Nome agenzia" value="' + esc(([...list].reverse().find((c) => c.agency) || {}).agency || '') + '"><input type="text" name="name" maxlength="80" placeholder="Nome e cognome">' +
-    '<select name="role" aria-label="Ruolo"><option value="agenzia">Referente agenzia (link + PIN)</option><option value="ospite">Relatore (sola lettura)</option><option value="tecnico">Service (link + PIN)</option></select>' +
-    '<input type="email" name="email" maxlength="120" placeholder="Email"><input type="tel" name="phone" maxlength="30" placeholder="Telefono (anche WhatsApp)">' +
-    '<div class="btns"><button class="btn small primary" type="submit">Aggiungi contatto</button></div><p class="msg" data-cmsg></p></form></div>';
-}
-function linksSection(e) {
-  const base = eventUrl(e.code) + '#k=';
-  return '<div class="card"><h3 style="margin-top:0">Link e PIN</h3>' +
-    linkLine('Agenzia', base + e.links.agenzia, e.pins.agenzia, 'a') + linkLine('Noi (service)', base + e.links.tecnico, e.pins.tecnico, 't') + linkLine('Relatori (sola lettura)', base + e.links.ospite, '', 'o') +
-    '<p class="msg" style="font-weight:500;color:var(--muted)">Link e PIN vanno insieme nel messaggio: usa Invia dai Contatti.</p></div>';
-}
+const heroBack = (color, section, title, sub, back) => hero(color, section, title, sub, true).replace('data-go=""', 'data-go="' + back + '"');
+const bigCard = (href, title, note) => '<a class="card" href="' + href + '" style="display:block;text-decoration:none;color:inherit"><b style="font-size:22px;line-height:1.15;display:block">' + esc(title) + '</b>' +
+  '<small style="display:block;margin-top:4px;color:var(--muted);font-weight:600">' + esc(note) + '</small></a>';
+const findEvent = (code) => { const e = events.find((x) => x.code === code); if (!e) location.hash = '#eventi'; return e; };
 
 // pagina di un evento: ci si arriva toccando la card nella lista
 function eventoPage(code) {
-  const e = events.find((x) => x.code === code);
-  if (!e) { location.hash = '#eventi'; return; }
+  const e = findEvent(code); if (!e) return;
   const meta = [e.date && dayLong(e.date), e.venue].filter(Boolean).join(' · ');
-  app.innerHTML = hero('var(--c1)', 'Evento', e.name, meta || 'Senza data', true).replace('data-go=""', 'data-go="eventi"') + '<div class="list">' +
+  const n = (e.contacts || []).length;
+  app.innerHTML = heroBack('var(--c1)', 'Evento', e.name, meta || 'Senza data', 'eventi') + '<div class="list">' +
     (e.purged ? '<div class="card"><p class="empty">Evento concluso: i materiali sono stati cancellati.</p></div>'
-      : '<div class="card"><div class="btns" style="margin-top:0"><button class="btn primary" type="button" data-open="' + esc(e.code) + '">Entra nell\'evento</button></div><p class="msg" style="font-weight:500;color:var(--muted)">' + e.files + ' file caricati · scade il ' + esc(dayShort(e.expiresAt)) + '</p></div>') +
-    contactsSection(e) + linksSection(e) + '</div>';
+      : '<a class="card" href="#" data-open="' + esc(e.code) + '" style="display:block;text-decoration:none;color:inherit"><b style="font-size:22px;line-height:1.15;display:block">Materiali</b><small style="display:block;margin-top:4px;color:var(--muted);font-weight:600">Entra nell\'evento · ' + e.files + ' file · scade il ' + esc(dayShort(e.expiresAt)) + '</small></a>') +
+    bigCard('#evento/' + esc(code) + '/contatti', 'Contatti', n ? n + (n === 1 ? ' contatto' : ' contatti') : 'Nessun contatto') +
+    bigCard('#evento/' + esc(code) + '/link', 'Link e PIN', 'Agenzia, service e relatori') + '</div>';
+  wire();
+}
+
+function contattiPage(code) {
+  const e = findEvent(code); if (!e) return;
+  const list = e.contacts || [];
+  app.innerHTML = heroBack('var(--c3)', 'Contatti', 'Contatti', e.name, 'evento/' + code) + '<div class="list">' +
+    '<a class="btn primary" href="#evento/' + esc(code) + '/nuovo-contatto" style="display:block;text-align:center;margin-bottom:6px">Crea nuovo contatto</a>' +
+    '<div class="card">' + (list.length ? list.map((c) => contactRow(e, c)).join('') : '<p class="empty">Nessun contatto. Aggiungi i referenti: poi mandi link e PIN in un unico messaggio.</p>') + '</div></div>';
+  wire();
+}
+
+function nuovoContattoPage(code) {
+  const e = findEvent(code); if (!e) return;
+  const list = e.contacts || [];
+  app.innerHTML = heroBack('var(--c3)', 'Nuovo', 'Nuovo contatto', e.name, 'evento/' + code + '/contatti') + '<div class="list">' +
+    '<form class="card" data-cform="' + esc(code) + '" autocomplete="off"><label>Agenzia</label><input type="text" name="agency" maxlength="80" placeholder="Nome agenzia" value="' + esc(([...list].reverse().find((c) => c.agency) || {}).agency || '') + '">' +
+    '<label>Nome</label><input type="text" name="name" maxlength="80" placeholder="Nome e cognome">' +
+    '<label>Ruolo</label><select name="role" aria-label="Ruolo"><option value="agenzia">Referente agenzia (link + PIN)</option><option value="ospite">Relatore (sola lettura)</option><option value="tecnico">Service (link + PIN)</option></select>' +
+    '<label>Email</label><input type="email" name="email" maxlength="120" placeholder="Email"><label>Telefono</label><input type="tel" name="phone" maxlength="30" placeholder="Telefono (anche WhatsApp)">' +
+    '<div class="btns"><button class="btn primary" type="submit">Salva contatto</button></div><p class="msg" data-cmsg></p></form></div>';
+  wire();
+}
+
+function linkPage(code) {
+  const e = findEvent(code); if (!e) return;
+  const base = eventUrl(e.code) + '#k=';
+  app.innerHTML = heroBack('var(--c2)', 'Link', 'Link e PIN', e.name, 'evento/' + code) + '<div class="list"><div class="card">' +
+    linkLine('Agenzia', base + e.links.agenzia, e.pins.agenzia, 'a') + linkLine('Noi (service)', base + e.links.tecnico, e.pins.tecnico, 't') + linkLine('Relatori (sola lettura)', base + e.links.ospite, '', 'o') +
+    '<p class="msg" style="font-weight:500;color:var(--muted)">Link e PIN vanno insieme nel messaggio: usa Invia dai Contatti.</p></div></div>';
   wire();
 }
 
@@ -152,10 +171,7 @@ async function saveContacts(code, mutate) {
   const j = await adminApi('PUT', { contacts: next }, '/' + code);
   e.contacts = j.contacts;
 }
-function rerender() { // aggiorna la pagina dell'evento
-  const m = /^#evento\/([A-Z0-9]+)$/.exec(location.hash);
-  if (m) eventoPage(m[1]); else route();
-}
+function rerender() { route(); } // ridisegna la pagina corrente
 
 function eventi() {
   app.innerHTML = hero('var(--c1)', '01 · Eventi', 'Eventi', 'Un evento, un link, un portale', true) + '<div class="list">' +
@@ -187,8 +203,8 @@ function wire() {
   app.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
     const ok = await copyText($('#' + b.dataset.copy).value); b.textContent = ok ? 'Copiato' : 'Copia a mano'; setTimeout(() => { b.textContent = 'Copia'; }, 2000);
   }));
-  app.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => {
-    const e = events.find((x) => x.code === b.dataset.open); if (!e) return;
+  app.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', (ev) => {
+    ev.preventDefault(); const e = events.find((x) => x.code === b.dataset.open); if (!e) return;
     try { sessionStorage.setItem('hubpin:' + e.code, e.pins.tecnico); } catch {} // entriamo senza ridigitare il PIN
     location.href = eventUrl(e.code) + '#k=' + e.links.tecnico;
   }));
@@ -198,7 +214,7 @@ function wire() {
     const c = { agency: String(d.get('agency') || '').trim(), name: String(d.get('name') || '').trim(), role: d.get('role'), email: String(d.get('email') || '').trim(), phone: String(d.get('phone') || '').trim() };
     if (!c.name && !c.email && !c.phone) { m.className = 'msg err'; m.textContent = 'Scrivi almeno un nome, un\'email o un telefono.'; return; }
     if (c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) { m.className = 'msg err'; m.textContent = 'L\'email non sembra corretta.'; return; }
-    try { await saveContacts(code, (l) => [...l, c]); openKeys.add('c:' + code); rerender(); } catch (x) { m.className = 'msg err'; m.textContent = x.message; }
+    try { await saveContacts(code, (l) => [...l, c]); location.hash = '#evento/' + code + '/contatti'; } catch (x) { m.className = 'msg err'; m.textContent = x.message; }
   }));
   app.querySelectorAll('[data-cdel]').forEach((b) => b.addEventListener('click', async () => {
     if (!b.dataset.arm) { b.dataset.arm = '1'; b.textContent = 'Elimina?'; setTimeout(() => { delete b.dataset.arm; b.textContent = '×'; }, 3000); return; }
@@ -252,7 +268,10 @@ const routes = { eventi, tools, altro };
 function route() {
   const r = location.hash.replace('#', '');
   if (r.startsWith('tool/')) toolPage(r.slice(5));
-  else if (r.startsWith('evento/')) eventoPage(r.slice(7));
+  else if (r.startsWith('evento/')) {
+    const [, code, sub] = r.split('/');
+    if (sub === 'contatti') contattiPage(code); else if (sub === 'nuovo-contatto') nuovoContattoPage(code); else if (sub === 'link') linkPage(code); else eventoPage(code);
+  }
   else if (r === 'nuovo') nuovoEvento();
   else (routes[r] || home)();
   window.scrollTo(0, 0);
