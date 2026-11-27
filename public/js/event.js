@@ -1,7 +1,7 @@
-import { $, esc, fmtSize, dayLong, dayShort, copyText, icons } from './util.js';
+import { $, esc, fmtSize, dayLong, dayShort, copyText, icons, API, eventUrl } from './util.js';
 
 const app = document.getElementById('app');
-const code = (location.pathname.split('/')[2] || '').toUpperCase();
+const code = (new URLSearchParams(location.search).get('c') || '').toUpperCase();
 const KEY = 'hub:' + code;
 const KINDS = [['presentazioni', 'Presentazioni'], ['video', 'Video'], ['musiche', 'Musiche'], ['tappo', 'Slide tappo'], ['altro', 'Altro']];
 let token = null, ev = null, kind = 'presentazioni', firstLoad = true;
@@ -13,14 +13,14 @@ const hm = /(?:^|[#&])k=([^&]+)/.exec(location.hash);
 if (hm) {
   token = decodeURIComponent(hm[1]);
   try { localStorage.setItem(KEY, token); } catch {}
-  history.replaceState(null, '', location.pathname); // la chiave non resta nell'indirizzo
+  history.replaceState(null, '', location.pathname + location.search); // la chiave non resta nell'indirizzo
 }
 const canEdit = () => ev && (ev.role === 'agenzia' || ev.role === 'tecnico');
 
 async function api(sub, init = {}) {
   const extra = {}; const pin = getPin(); if (pin) extra['x-pin'] = pin;
   if (firstLoad && sub === '') { extra['x-open'] = '1'; }
-  const r = await fetch('/api/e/' + code + sub, { ...init, headers: { authorization: 'Bearer ' + token, ...extra, ...(init.headers || {}) } });
+  const r = await fetch(API + '/e/' + code + sub, { ...init, headers: { authorization: 'Bearer ' + token, ...extra, ...(init.headers || {}) } });
   if (r.status === 401) {
     const j = await r.clone().json().catch(() => ({}));
     if (j.needPin) throw Object.assign(new Error(j.error || 'Serve il PIN.'), { needPin: true });
@@ -106,15 +106,26 @@ function materiali() {
   }));
 }
 function xhrUpload(file, label, onProgress) {
-  return new Promise((resolve, reject) => {
-    const x = new XMLHttpRequest(); x.open('POST', '/api/e/' + code + '/upload');
-    x.setRequestHeader('authorization', 'Bearer ' + token);
-    { const pn = getPin(); if (pn) x.setRequestHeader('x-pin', pn); }
-    x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
-    x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch {} x.status === 201 ? resolve(j.file) : reject(new Error(j.error || 'Caricamento non riuscito.')); };
-    x.onerror = () => reject(new Error('Connessione interrotta.'));
-    const fd = new FormData(); fd.append('kind', kind); fd.append('label', label); fd.append('file', file, file.name);
-    x.send(fd);
+  return new Promise(async (resolve, reject) => {
+    try {
+      // 1) chiedo dove mandare il file (qui si controllano link, PIN, tipo e dimensione)
+      const r1 = await api('/upload-url', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: file.name, size: file.size }) });
+      const j1 = await r1.json().catch(() => ({}));
+      if (!r1.ok) return reject(new Error(j1.error || 'Caricamento non riuscito.'));
+      // 2) invio il file all'indirizzo ricevuto
+      const x = new XMLHttpRequest(); x.open('PUT', new URL(j1.url, API.startsWith('http') ? API + '/' : location.href).href);
+      x.setRequestHeader('content-type', file.type || 'application/octet-stream');
+      x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+      x.onerror = () => reject(new Error('Connessione interrotta.'));
+      x.onload = async () => {
+        if (x.status < 200 || x.status >= 300) { let j = {}; try { j = JSON.parse(x.responseText); } catch {} return reject(new Error(j.error || j.message || 'Caricamento non riuscito.')); }
+        // 3) confermo: l'elenco dei file lo aggiorna solo il servizio
+        const r3 = await api('/upload-done', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: j1.id, name: file.name, kind, label }) });
+        const j3 = await r3.json().catch(() => ({}));
+        r3.ok ? resolve(j3.file) : reject(new Error(j3.error || 'Caricamento non riuscito.'));
+      };
+      x.send(file);
+    } catch (e) { reject(e.needPin || e.auth || e.gone ? e : new Error('Connessione interrotta.')); }
   });
 }
 async function uploadFiles() {
@@ -138,6 +149,10 @@ async function download(id, btn) {
   try {
     const r = await api('/files/' + id); if (!r.ok) throw new Error();
     const f = ev.files.find((x) => x.id === id);
+    if ((r.headers.get('content-type') || '').includes('application/json')) { // versione Supabase: indirizzo firmato e a scadenza
+      const j = await r.json(); const a = document.createElement('a'); a.href = j.url; a.download = f ? f.name : 'file'; document.body.appendChild(a); a.click(); a.remove();
+      btn.textContent = old; btn.disabled = false; return;
+    }
     const url = URL.createObjectURL(await r.blob());
     const a = document.createElement('a'); a.href = url; a.download = f ? f.name : 'file'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -159,7 +174,7 @@ function timer() {
 /* ---------- info ---------- */
 const INFO_FIELDS = [['montaggio', 'Inizio montaggio', 'time'], ['inizio', 'Inizio evento', 'time'], ['fine', 'Fine evento', 'time'], ['referente', 'Referente', 'text'], ['telefono', 'Telefono', 'tel']];
 function linkRow(label, note, tok) {
-  const url = location.origin + '/e/' + code + '#k=' + tok;
+  const url = eventUrl(code) + '#k=' + tok;
   return '<label>' + esc(label) + '</label><div class="linkbox"><input type="text" readonly value="' + esc(url) + '" aria-label="' + esc(label) + '"><button class="btn small" type="button" data-copy="' + esc(url) + '">Copia</button></div><p style="margin-top:4px;font-size:12px">' + esc(note) + '</p>';
 }
 function info() {

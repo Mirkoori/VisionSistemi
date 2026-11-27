@@ -175,6 +175,29 @@ export function createHubServer({
     req.pipe(bb);
   }
 
+  // caricamenti in attesa: id -> evento (l'id lo conosce solo chi ha chiesto upload-url con link e PIN giusti)
+  const pending = new Map();
+  setInterval(() => { for (const [k, v] of pending) if (Date.now() - v.at > 3600_000) pending.delete(k); }, 600_000).unref();
+  function handlePut(req, res, id) {
+    const p = pending.get(id);
+    if (!p) return err(res, 404, 'Caricamento non valido o scaduto.');
+    const ev = events[p.code];
+    if (!ev || isExpired(ev)) return err(res, 410, 'Evento concluso.');
+    const dir = path.join(uploadsDir, p.code); fs.mkdirSync(dir, { recursive: true });
+    const tmp = path.join(dir, id + '.part'), final = path.join(dir, id);
+    const out = fs.createWriteStream(tmp); let size = 0, stop = null;
+    const abort = (c, m) => { if (stop) return; stop = [c, m]; req.unpipe(out); out.destroy(); fs.rm(tmp, { force: true }, () => {}); err(res, c, m); req.resume(); };
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > maxFileMb * 1048576) abort(413, 'File troppo grande (massimo ' + maxFileMb + ' MB).');
+      else if (eventBytes(ev) + size > eventQuotaMb * 1048576) abort(413, 'Spazio dell\'evento esaurito.');
+    });
+    req.on('aborted', () => { if (!stop) { stop = [0, '']; out.destroy(); fs.rm(tmp, { force: true }, () => {}); } });
+    out.on('error', () => abort(500, 'Errore di scrittura.'));
+    out.on('finish', () => { if (stop) return; fs.renameSync(tmp, final); pending.delete(id); send(res, 200, { ok: true }); });
+    req.pipe(out);
+  }
+
   async function api(req, res, url) {
     const ip = ipOf(req);
     // area riservata a noi: elenco e creazione eventi, solo con il PIN di amministrazione
@@ -201,6 +224,8 @@ export function createHubServer({
       saveNow();
       return send(res, 201, { code, links: events[code].tokens, pins: events[code].pins, expiresAt: events[code].expiresAt });
     }
+    const pm = /^\/api\/put\/([a-f0-9]{16})$/.exec(url.pathname);
+    if (pm && req.method === 'PUT') return handlePut(req, res, pm[1]);
     const m = /^\/api\/e\/([A-Z0-9]+)(?:\/(.*))?$/.exec(url.pathname);
     if (!m || !CODE_RE.test(m[1])) return err(res, 404, 'Non trovato.');
     if (blocked(ip)) return err(res, 429, 'Troppi tentativi. Riprova tra qualche minuto.');
@@ -240,6 +265,31 @@ export function createHubServer({
       return send(res, 200, { ...publicEvent(ev, role), newPin: pin });
     }
     if (rest === 'upload' && req.method === 'POST') return handleUpload(req, res, ev, role);
+    // caricamento in due passi, come sulla versione Supabase: prima si chiede un indirizzo, poi si invia il file, poi si conferma
+    if (rest === 'upload-url' && req.method === 'POST') {
+      const b = await readJson(req);
+      const name = clip(path.basename(String(b.name || '').replace(/\\/g, '/')), 200) || 'file';
+      const ext = path.extname(name).slice(1).toLowerCase();
+      if (!ALLOWED_EXT.has(ext)) return err(res, 415, 'Tipo di file non consentito: ' + (ext || 'senza estensione') + '.');
+      const size = Number(b.size) || 0;
+      if (size > maxFileMb * 1048576) return err(res, 413, 'File troppo grande (massimo ' + maxFileMb + ' MB).');
+      if (eventBytes(ev) + size > eventQuotaMb * 1048576) return err(res, 413, 'Spazio dell\'evento esaurito.');
+      const id = crypto.randomBytes(8).toString('hex');
+      pending.set(id, { code: ev.code, at: Date.now() });
+      return send(res, 200, { id, url: '/api/put/' + id });
+    }
+    if (rest === 'upload-done' && req.method === 'POST') {
+      const b = await readJson(req);
+      if (!/^[a-f0-9]{16}$/.test(b.id || '')) return err(res, 400, 'Richiesta non valida.');
+      if (ev.files.some((x) => x.id === b.id)) return send(res, 200, { ok: true });
+      const name = clip(path.basename(String(b.name || '').replace(/\\/g, '/')), 200) || 'file';
+      if (!ALLOWED_EXT.has(path.extname(name).slice(1).toLowerCase())) return err(res, 415, 'Tipo di file non consentito.');
+      const fp = path.join(uploadsDir, ev.code, b.id);
+      let st; try { st = fs.statSync(fp); } catch { return err(res, 400, 'Il file non è arrivato.'); }
+      const rec = { id: b.id, kind: KINDS.includes(b.kind) ? b.kind : 'altro', label: clip(b.label, 120), name, size: st.size, at: new Date().toISOString() };
+      ev.files.push(rec); logAdd(ev, role, 'caricato', rec.name); save();
+      return send(res, 201, { file: rec });
+    }
     const f = /^files\/([a-f0-9]{16})$/.exec(rest);
     if (f) {
       const i = ev.files.findIndex((x) => x.id === f[1]);
@@ -261,7 +311,8 @@ export function createHubServer({
 
   function serveStatic(req, res, url) {
     let p = url.pathname;
-    if (/^\/e\/[A-Za-z0-9]+\/?$/.test(p)) p = '/e.html';
+    const em = /^\/e\/([A-Za-z0-9]+)\/?$/.exec(p);
+    if (em) { res.writeHead(302, { location: '/e.html?c=' + em[1].toUpperCase() }); return res.end(); }
     else if (p === '/nuovo') { res.writeHead(302, { location: '/#eventi' }); return res.end(); }
     else if (p === '/') p = '/index.html';
     const file = path.normalize(path.join(PUBLIC_DIR, p));

@@ -1,4 +1,4 @@
-import { $, esc, dayShort, copyText, icons } from './util.js';
+import { $, esc, dayShort, copyText, icons, API, eventUrl } from './util.js';
 
 /* Area riservata a noi: home a wallet con Eventi, Tools e altro. Si entra con il PIN di amministrazione. */
 const app = document.getElementById('app');
@@ -14,7 +14,7 @@ const TOOLS = [
 ];
 
 async function adminApi(method, body) {
-  const r = await fetch('/api/events', { method, headers: { 'x-admin-pin': getAdmin(), ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(API + '/events', { method, headers: { 'x-admin-pin': getAdmin(), ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
   if (r.status === 401) { setAdmin(''); throw Object.assign(new Error(j.error || 'PIN non corretto.'), { locked: true }); }
   if (!r.ok) throw new Error(j.error || 'Errore.');
@@ -54,7 +54,7 @@ function linkLine(label, url, pin, i) {
 }
 
 function eventCard(e, n) {
-  const base = location.origin + '/e/' + e.code + '#k=';
+  const base = eventUrl(e.code) + '#k=';
   const meta = [e.date && dayShort(e.date), e.venue].filter(Boolean).join(' · ');
   return '<div class="card"><div class="row"><div class="t"><b>' + esc(e.name) + '</b><small>' + esc(meta || 'Senza data') + ' · ' + e.files + ' file' + (e.purged ? ' · concluso' : '') + '</small></div>' +
     (e.purged ? '' : '<button class="btn small primary" type="button" data-open="' + esc(e.code) + '">Apri</button>') + '</div>' +
@@ -84,7 +84,7 @@ function eventi() {
   app.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => {
     const e = events.find((x) => x.code === b.dataset.open); if (!e) return;
     try { sessionStorage.setItem('hubpin:' + e.code, e.pins.tecnico); } catch {} // entriamo senza ridigitare il PIN
-    location.href = '/e/' + e.code + '#k=' + e.links.tecnico;
+    location.href = eventUrl(e.code) + '#k=' + e.links.tecnico;
   }));
 }
 

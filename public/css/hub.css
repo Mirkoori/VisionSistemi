@@ -1,9 +1,9 @@
 /* Stile "wallet" come WAOOO: sfondo greige, Montserrat nero pesante, carte colorate sovrapposte, liste bianche arrotondate. */
-@font-face { font-family: Montserrat; font-weight: 500; font-display: swap; src: url(/fonts/montserrat-latin-500-normal.woff2) format("woff2"); }
-@font-face { font-family: Montserrat; font-weight: 600; font-display: swap; src: url(/fonts/montserrat-latin-600-normal.woff2) format("woff2"); }
-@font-face { font-family: Montserrat; font-weight: 700; font-display: swap; src: url(/fonts/montserrat-latin-700-normal.woff2) format("woff2"); }
-@font-face { font-family: Montserrat; font-weight: 800; font-display: swap; src: url(/fonts/montserrat-latin-800-normal.woff2) format("woff2"); }
-@font-face { font-family: Montserrat; font-weight: 900; font-display: swap; src: url(/fonts/montserrat-latin-900-normal.woff2) format("woff2"); }
+@font-face { font-family: Montserrat; font-weight: 500; font-display: swap; src: url(../fonts/montserrat-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: Montserrat; font-weight: 600; font-display: swap; src: url(../fonts/montserrat-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: Montserrat; font-weight: 700; font-display: swap; src: url(../fonts/montserrat-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: Montserrat; font-weight: 800; font-display: swap; src: url(../fonts/montserrat-latin-800-normal.woff2) format("woff2"); }
+@font-face { font-family: Montserrat; font-weight: 900; font-display: swap; src: url(../fonts/montserrat-latin-900-normal.woff2) format("woff2"); }
 :root {
   --bg: #ECE9E3; --ink: #141414; --card: #FEFEFE; --muted: #6B6862; --line: #dcd8d0;
   --c1: #FE693C; --c2: #C7B5F4; --c3: #BED2C0; --ok: #1d7a4a; --bad: #b3261e;

@@ -219,3 +219,30 @@ test('l\'elenco eventi è solo per chi ha il PIN di amministrazione', async () =
     assert.equal(r.status, 302);
   } finally { await s.close(); }
 });
+
+test('caricamento in tre passi: indirizzo, invio del file, conferma', async () => {
+  const s = await setup();
+  try {
+    const r = await s.make(); const tok = r.links.agenzia;
+    const j = (res) => res.json();
+    const bad = await s.call(r.code, tok, '/upload-url', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'virus.exe', size: 10 }) });
+    assert.equal(bad.status, 415);
+    const u = await j(await s.call(r.code, tok, '/upload-url', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'slide.pptx', size: 5 }) }));
+    assert.match(u.url, /^\/api\/put\//);
+    // senza aver inviato il file la conferma fallisce
+    const early = await s.call(r.code, tok, '/upload-done', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: u.id, name: 'slide.pptx', kind: 'presentazioni' }) });
+    assert.equal(early.status, 400);
+    const put = await fetch(s.base + u.url, { method: 'PUT', body: 'ciao!' });
+    assert.equal(put.status, 200);
+    const done = await s.call(r.code, tok, '/upload-done', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: u.id, name: 'slide.pptx', kind: 'presentazioni', label: 'Rossi' }) });
+    assert.equal(done.status, 201);
+    const ev = await j(await s.call(r.code, tok));
+    assert.equal(ev.files.length, 1); assert.equal(ev.files[0].size, 5);
+    // un identificativo inventato non carica nulla
+    const fake = await fetch(s.base + '/api/put/0123456789abcdef', { method: 'PUT', body: 'x' });
+    assert.equal(fake.status, 404);
+    // l'ospite non può chiedere di caricare
+    const g = await s.call(r.code, r.links.ospite, '/upload-url', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'a.pdf', size: 1 }) });
+    assert.equal(g.status, 403);
+  } finally { await s.close(); }
+});
