@@ -10,7 +10,10 @@ const MAX_FILE_MB = Number(Deno.env.get("MAX_FILE_MB")) || 50;
 const QUOTA_MB = Number(Deno.env.get("EVENT_QUOTA_MB")) || 200;
 const RETENTION_DAYS = Number(Deno.env.get("RETENTION_DAYS")) || 30;
 const ALLOWED_EXT = new Set(["pptx","ppt","pps","ppsx","key","pdf","doc","docx","xls","xlsx","txt","csv","mp4","mov","m4v","avi","mkv","wmv","webm","mp3","wav","m4a","aac","aif","aiff","flac","png","jpg","jpeg","gif","webp","zip"]);
-const KINDS = ["presentazioni", "video", "musiche", "tappo", "altro"];
+const KINDS = ["presentazioni", "video", "musiche", "tappo", "altro", "programma"];
+// il programma si vede nel browser: PDF, foto o un documento Word (che si scarica)
+const PROG_EXT = new Set(["pdf", "png", "jpg", "jpeg", "webp", "gif", "doc", "docx"]);
+const VIEWABLE = new Set(["pdf", "png", "jpg", "jpeg", "webp", "gif"]);
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_RE = /^[A-Z0-9]{4,12}$/;
 const EDIT = new Set(["agenzia", "tecnico"]);
@@ -70,7 +73,9 @@ async function purge(ev: Ev) {
 }
 
 function publicEvent(ev: Ev, role: string) {
-  const base: Ev = { code: ev.code, role, name: ev.name, date: ev.date, venue: ev.venue, program: ev.program, info: ev.info, timerUrl: ev.timerUrl };
+  const pf = ev.files.find((f: Ev) => f.kind === "programma");
+  const base: Ev = { code: ev.code, role, name: ev.name, date: ev.date, venue: ev.venue, program: ev.program, info: ev.info, timerUrl: ev.timerUrl,
+    programFile: pf ? { id: pf.id, name: pf.name, size: pf.size, at: pf.at } : null };
   if (EDIT.has(role)) {
     base.files = ev.files.map(({ id, kind, label, name, size, at }: Ev) => ({ id, kind, label, name, size, at }));
     base.usedBytes = eventBytes(ev); base.quotaBytes = QUOTA_MB * 1048576; base.maxFileBytes = MAX_FILE_MB * 1048576;
@@ -149,6 +154,15 @@ Deno.serve(async (req) => {
       if (req.headers.get("x-open") === "1") { logAdd(ev, role, "apertura"); await save(ev); }
       return json(200, publicEvent(ev, role));
     }
+    if (rest === "program-file" && req.method === "GET") {
+      const rec = ev.files.find((f: Ev) => f.kind === "programma");
+      if (!rec) return err(404, "Nessun file del programma.");
+      const ext = (rec.name.split(".").pop() || "").toLowerCase();
+      const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(`${ev.code}/${rec.id}`, 120, VIEWABLE.has(ext) ? undefined : { download: rec.name });
+      if (error || !data) return err(404, "File non trovato.");
+      logAdd(ev, role, "programma aperto", rec.name); await save(ev);
+      return json(200, { url: data.signedUrl, name: rec.name });
+    }
     if (!EDIT.has(role)) return err(403, "Questo link è in sola lettura.");
 
     if (rest === "" && req.method === "PUT") {
@@ -179,6 +193,7 @@ Deno.serve(async (req) => {
       const name = clip(String(b.name || "").split(/[\\/]/).pop(), 200) || "file";
       const ext = (name.split(".").pop() || "").toLowerCase();
       if (!name.includes(".") || !ALLOWED_EXT.has(ext)) return err(415, "Tipo di file non consentito: " + (name.includes(".") ? ext : "senza estensione") + ".");
+      if (b.kind === "programma" && !PROG_EXT.has(ext)) return err(415, "Per il programma servono un PDF, una foto o un documento Word.");
       const size = Number(b.size) || 0;
       if (size > MAX_FILE_MB * 1048576) return err(413, `File troppo grande (massimo ${MAX_FILE_MB} MB in questa versione di prova).`);
       if (eventBytes(ev) + size > QUOTA_MB * 1048576) return err(413, "Spazio dell'evento esaurito.");
@@ -202,8 +217,15 @@ Deno.serve(async (req) => {
         await sb.storage.from(BUCKET).remove([`${ev.code}/${b.id}`]);
         return err(413, "File troppo grande o spazio esaurito.");
       }
-      const rec = { id: b.id, kind: KINDS.includes(b.kind) ? b.kind : "altro", label: clip(b.label, 120), name, size, at: new Date().toISOString() };
-      ev.files.push(rec); logAdd(ev, role, "caricato", name); await save(ev);
+      const kind = KINDS.includes(b.kind) ? b.kind : "altro";
+      if (kind === "programma") {
+        if (!PROG_EXT.has(ext)) { await sb.storage.from(BUCKET).remove([`${ev.code}/${b.id}`]); return err(415, "Per il programma servono un PDF, una foto o un documento Word."); }
+        const old = ev.files.filter((f: Ev) => f.kind === "programma");
+        if (old.length) await sb.storage.from(BUCKET).remove(old.map((f: Ev) => `${ev.code}/${f.id}`));
+        ev.files = ev.files.filter((f: Ev) => f.kind !== "programma");
+      }
+      const rec = { id: b.id, kind, label: clip(b.label, 120), name, size, at: new Date().toISOString() };
+      ev.files.push(rec); logAdd(ev, role, kind === "programma" ? "programma caricato" : "caricato", name); await save(ev);
       return json(201, { file: rec });
     }
 

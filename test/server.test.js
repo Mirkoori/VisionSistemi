@@ -246,3 +246,38 @@ test('caricamento in tre passi: indirizzo, invio del file, conferma', async () =
     assert.equal(g.status, 403);
   } finally { await s.close(); }
 });
+
+test('file del programma: lo carica l\'agenzia, lo vedono tutti, il nuovo sostituisce il vecchio', async () => {
+  const s = await setup();
+  try {
+    const r = await s.make(); const tok = r.links.agenzia;
+    const postJson = (t, sub, body) => s.call(r.code, t, sub, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const send = async (name, content) => {
+      const u = await (await postJson(tok, '/upload-url', { name, size: content.length, kind: 'programma' })).json();
+      await fetch(s.base + u.url, { method: 'PUT', body: content });
+      return postJson(tok, '/upload-done', { id: u.id, name, kind: 'programma' });
+    };
+    // un file che non si può aprire come programma è rifiutato
+    assert.equal((await postJson(tok, '/upload-url', { name: 'musica.mp3', size: 5, kind: 'programma' })).status, 415);
+    assert.equal((await send('programma.pdf', '%PDF-1 uno')).status, 201);
+    const ospite = await (await s.call(r.code, r.links.ospite)).json();
+    assert.equal(ospite.programFile.name, 'programma.pdf');
+    assert.equal(ospite.files, undefined); // i relatori non vedono l'elenco dei file
+    const view = await s.call(r.code, r.links.ospite, '/program-file');
+    assert.equal(view.status, 200);
+    assert.equal(view.headers.get('content-type'), 'application/pdf');
+    assert.match(view.headers.get('content-disposition'), /^inline/);
+    assert.equal(await view.text(), '%PDF-1 uno');
+    // gli altri file restano riservati
+    const other = await (await postJson(tok, '/upload-url', { name: 'slide.pptx', size: 1 })).json();
+    await fetch(s.base + other.url, { method: 'PUT', body: 'x' });
+    const done = await (await postJson(tok, '/upload-done', { id: other.id, name: 'slide.pptx', kind: 'presentazioni' })).json();
+    assert.equal((await s.call(r.code, r.links.ospite, '/files/' + done.file.id)).status, 403);
+    // un nuovo programma sostituisce il vecchio
+    assert.equal((await send('nuovo.png', 'PNGDATA')).status, 201);
+    const ag = await (await s.call(r.code, tok)).json();
+    assert.equal(ag.files.filter((f) => f.kind === 'programma').length, 1);
+    assert.equal(ag.programFile.name, 'nuovo.png');
+    assert.equal((await s.call(r.code, r.links.ospite, '/program-file')).headers.get('content-type'), 'image/png');
+  } finally { await s.close(); }
+});

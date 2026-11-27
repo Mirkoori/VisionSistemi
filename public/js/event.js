@@ -51,7 +51,7 @@ function home() {
   cards.push(['c3', '04', 'Info', 'Location · Orari · Contatti', '#info']);
   if (canEdit() || ev.timerUrl) cards.push(['c4', '03', 'Timer', 'Schermo relatore · Moderatore', '#timer']);
   if (canEdit()) cards.push(['c2', '02', 'Materiali', 'Presentazioni · Video · Musiche · Tappo' + (ev.files.length ? ' · ' + ev.files.length + ' file' : ''), '#materiali']);
-  cards.push(['c1', '01', 'Programma', ev.program.trim() ? 'Interventi e orari' : 'Da inserire', '#programma', dayShort(ev.date)]);
+  cards.push(['c1', '01', 'Programma', (ev.program.trim() || ev.programFile) ? 'Interventi e orari' : 'Da inserire', '#programma', dayShort(ev.date)]);
   app.innerHTML = '<div class="hero"><div class="topbar"><span class="tag">Hub Evento</span><span class="tag">' + esc(code) + '</span></div>' +
     '<h1 class="big">' + esc(ev.name) + '</h1>' + (ev.date ? '<p class="sub">' + esc(dayLong(ev.date)) + '</p>' : '') + (info ? '<p class="sub" style="margin-top:6px;font-weight:700">' + esc(info) + '</p>' : '') +
     '<span class="role">' + roleLabel[ev.role] + '</span></div>' +
@@ -61,6 +61,26 @@ function home() {
 }
 
 /* ---------- programma ---------- */
+function programFileCard() {
+  const pf = ev.programFile;
+  let h = '<div class="card"><h3>Programma in documento</h3>';
+  if (pf) h += '<div class="row"><div class="t"><b>' + esc(pf.name) + '</b><small>' + esc(fmtSize(pf.size) + ' · ' + new Date(pf.at).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</small></div>' +
+    '<button class="btn small primary" type="button" id="openPF">Apri</button></div>';
+  else h += '<p class="empty">' + (canEdit() ? 'Carica il programma dell\'agenzia (PDF, foto o Word).' : 'Il programma non è ancora stato caricato.') + '</p>';
+  if (canEdit()) h += '<label for="pfi">' + (pf ? 'Sostituisci con un altro file' : 'File del programma') + '</label><input type="file" id="pfi" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,application/pdf,image/*">' +
+    '<div class="btns"><button class="btn primary" type="button" id="pfUp">Carica</button>' + (pf ? '<button class="btn danger" type="button" id="pfRm">Rimuovi</button>' : '') + '</div><p class="msg" id="msgPF" role="status"></p>';
+  return h + '</div>';
+}
+async function openProgramFile(btn) {
+  const w = window.open('', '_blank'); // si apre subito, altrimenti il telefono blocca la scheda
+  const old = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await api('/program-file'); if (!r.ok) throw new Error();
+    if ((r.headers.get('content-type') || '').includes('application/json')) { const j = await r.json(); if (w) w.location = j.url; else location.href = j.url; }
+    else { const u = URL.createObjectURL(await r.blob()); if (w) w.location = u; else location.href = u; }
+  } catch { if (w) w.close(); btn.textContent = 'Errore'; setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 2000); return; }
+  btn.textContent = old; btn.disabled = false;
+}
 function programma() {
   const lines = ev.program.split('\n').map((l) => l.trim()).filter(Boolean);
   const rows = lines.map((l) => {
@@ -68,16 +88,31 @@ function programma() {
     return m ? '<div class="prog"><span class="time">' + esc(m[1].replace('.', ':')) + '</span><span>' + esc(m[2]) + '</span></div>' : '<div class="prog" style="grid-template-columns:1fr"><b>' + esc(l) + '</b></div>';
   }).join('');
   let h = hero('var(--c1)', '01 · Programma', 'Programma', ev.name, true) + '<div class="list">';
-  h += '<div class="card">' + (rows || '<p class="empty">Il programma non è ancora stato inserito.</p>') + '</div>';
-  if (canEdit()) h += '<div class="card"><h3>Modifica</h3><label for="prg">Una riga per voce</label><textarea id="prg" placeholder="09:00 Apertura dei lavori&#10;09:30 Relazione di apertura">' + esc(ev.program) + '</textarea>' +
-    '<p>Scrivi l\'orario all\'inizio della riga (per esempio 09:30). Le righe senza orario diventano titoli.</p><div class="btns"><button class="btn primary" type="button" id="saveP">Salva</button></div><p class="msg" id="msgP" role="status"></p></div>';
+  h += programFileCard();
+  if (rows || (!ev.programFile && !canEdit())) h += '<div class="card">' + (rows || '<p class="empty">Il programma non è ancora stato inserito.</p>') + '</div>';
+  if (canEdit()) h += '<div class="card"><h3>Programma scritto (facoltativo)</h3><label for="prg">Una riga per voce</label><textarea id="prg" placeholder="09:00 Apertura dei lavori&#10;09:30 Relazione di apertura">' + esc(ev.program) + '</textarea>' +
+    '<p>Se vuoi, scrivi anche gli orari a mano: l\'orario all\'inizio della riga (per esempio 09:30). Le righe senza orario diventano titoli.</p><div class="btns"><button class="btn primary" type="button" id="saveP">Salva</button></div><p class="msg" id="msgP" role="status"></p></div>';
   app.innerHTML = h + '</div>';
+  const o = $('#openPF'); if (o) o.addEventListener('click', () => openProgramFile(o));
+  const up = $('#pfUp'); if (up) up.addEventListener('click', async () => {
+    const f = $('#pfi').files[0], m = $('#msgPF');
+    if (!f) { m.className = 'msg err'; m.textContent = 'Scegli un file.'; return; }
+    up.disabled = true;
+    try {
+      await xhrUpload(f, '', (p) => { m.className = 'msg'; m.textContent = 'Carico ' + f.name + ' · ' + Math.round(p * 100) + '%'; }, 'programma');
+      await reload(); programma(); const mm = $('#msgPF'); mm.className = 'msg ok'; mm.textContent = 'Programma caricato.';
+    } catch (e) { up.disabled = false; m.className = 'msg err'; m.textContent = e.message; }
+  });
+  const rm = $('#pfRm'); if (rm) rm.addEventListener('click', async () => {
+    if (!rm.dataset.arm) { rm.dataset.arm = '1'; rm.textContent = 'Confermi?'; setTimeout(() => { delete rm.dataset.arm; rm.textContent = 'Rimuovi'; }, 4000); return; }
+    await api('/files/' + ev.programFile.id, { method: 'DELETE' }); await reload(); programma();
+  });
   const b = $('#saveP'); if (b) b.addEventListener('click', () => saveWith(b, $('#msgP'), () => putEvent({ program: $('#prg').value }), programma));
 }
 
 /* ---------- materiali ---------- */
 function groupHtml() {
-  if (!ev.files.length) return '<div class="card"><p class="empty">Nessun file caricato.</p></div>';
+  if (!ev.files.some((f) => f.kind !== 'programma')) return '<div class="card"><p class="empty">Nessun file caricato.</p></div>';
   return KINDS.map(([k, label]) => {
     const fs = ev.files.filter((f) => f.kind === k); if (!fs.length) return '';
     return '<p class="group">' + esc(label) + ' · ' + fs.length + '</p><div class="card">' + fs.map((f) =>
@@ -105,11 +140,11 @@ function materiali() {
     setTimeout(() => { delete b.dataset.arm; b.textContent = 'Elimina'; }, 4000);
   }));
 }
-function xhrUpload(file, label, onProgress) {
+function xhrUpload(file, label, onProgress, k = kind) {
   return new Promise(async (resolve, reject) => {
     try {
       // 1) chiedo dove mandare il file (qui si controllano link, PIN, tipo e dimensione)
-      const r1 = await api('/upload-url', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: file.name, size: file.size }) });
+      const r1 = await api('/upload-url', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: file.name, size: file.size, kind: k }) });
       const j1 = await r1.json().catch(() => ({}));
       if (!r1.ok) return reject(new Error(j1.error || 'Caricamento non riuscito.'));
       // 2) invio il file all'indirizzo ricevuto
@@ -120,7 +155,7 @@ function xhrUpload(file, label, onProgress) {
       x.onload = async () => {
         if (x.status < 200 || x.status >= 300) { let j = {}; try { j = JSON.parse(x.responseText); } catch {} return reject(new Error(j.error || j.message || 'Caricamento non riuscito.')); }
         // 3) confermo: l'elenco dei file lo aggiorna solo il servizio
-        const r3 = await api('/upload-done', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: j1.id, name: file.name, kind, label }) });
+        const r3 = await api('/upload-done', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: j1.id, name: file.name, kind: k, label }) });
         const j3 = await r3.json().catch(() => ({}));
         r3.ok ? resolve(j3.file) : reject(new Error(j3.error || 'Caricamento non riuscito.'));
       };

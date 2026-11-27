@@ -23,7 +23,9 @@ const ALLOWED_EXT = new Set([
   'mp4', 'mov', 'm4v', 'avi', 'mkv', 'wmv', 'webm', 'mp3', 'wav', 'm4a', 'aac', 'aif', 'aiff', 'flac',
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'zip',
 ]);
-const KINDS = ['presentazioni', 'video', 'musiche', 'tappo', 'altro'];
+const KINDS = ['presentazioni', 'video', 'musiche', 'tappo', 'altro', 'programma'];
+// il programma si vede nel browser: solo formati che il telefono sa aprire (o un documento Word, che si scarica)
+const PROG_TYPES = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', doc: null, docx: null };
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_RE = /^[A-Z0-9]{4,12}$/;
 const EDIT_ROLES = new Set(['agenzia', 'tecnico']);
@@ -95,7 +97,9 @@ export function createHubServer({
   const eventBytes = (ev) => ev.files.reduce((n, f) => n + f.size, 0);
 
   function publicEvent(ev, role) {
-    const base = { code: ev.code, role, name: ev.name, date: ev.date, venue: ev.venue, program: ev.program, info: ev.info, timerUrl: ev.timerUrl };
+    const pf = ev.files.find((f) => f.kind === 'programma');
+    const base = { code: ev.code, role, name: ev.name, date: ev.date, venue: ev.venue, program: ev.program, info: ev.info, timerUrl: ev.timerUrl,
+      programFile: pf ? { id: pf.id, name: pf.name, size: pf.size, at: pf.at } : null };
     if (EDIT_ROLES.has(role)) {
       base.files = ev.files.map(({ id, kind, label, name, size, at }) => ({ id, kind, label, name, size, at }));
       base.usedBytes = eventBytes(ev); base.quotaBytes = eventQuotaMb * 1048576; base.maxFileBytes = maxFileMb * 1048576;
@@ -241,6 +245,17 @@ export function createHubServer({
       if (req.headers['x-open'] === '1') { logAdd(ev, role, 'apertura'); save(); }
       return send(res, 200, publicEvent(ev, role));
     }
+    if (rest === 'program-file' && req.method === 'GET') {
+      const rec = ev.files.find((f) => f.kind === 'programma'); const p = rec && path.join(uploadsDir, ev.code, rec.id);
+      if (!rec || !fs.existsSync(p)) return err(res, 404, 'Nessun file del programma.');
+      const ext = path.extname(rec.name).slice(1).toLowerCase(); const type = PROG_TYPES[ext];
+      logAdd(ev, role, 'programma aperto', rec.name); save();
+      res.writeHead(200, {
+        'content-type': type || 'application/octet-stream', 'content-length': rec.size, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+        'content-security-policy': 'sandbox', 'content-disposition': `${type ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(rec.name)}`,
+      });
+      return fs.createReadStream(p).pipe(res);
+    }
     if (!EDIT_ROLES.has(role)) return err(res, 403, 'Questo link è in sola lettura.');
 
     if (rest === '' && req.method === 'PUT') {
@@ -271,6 +286,7 @@ export function createHubServer({
       const name = clip(path.basename(String(b.name || '').replace(/\\/g, '/')), 200) || 'file';
       const ext = path.extname(name).slice(1).toLowerCase();
       if (!ALLOWED_EXT.has(ext)) return err(res, 415, 'Tipo di file non consentito: ' + (ext || 'senza estensione') + '.');
+      if (b.kind === 'programma' && !(ext in PROG_TYPES)) return err(res, 415, 'Per il programma servono un PDF, una foto o un documento Word.');
       const size = Number(b.size) || 0;
       if (size > maxFileMb * 1048576) return err(res, 413, 'File troppo grande (massimo ' + maxFileMb + ' MB).');
       if (eventBytes(ev) + size > eventQuotaMb * 1048576) return err(res, 413, 'Spazio dell\'evento esaurito.');
@@ -286,8 +302,14 @@ export function createHubServer({
       if (!ALLOWED_EXT.has(path.extname(name).slice(1).toLowerCase())) return err(res, 415, 'Tipo di file non consentito.');
       const fp = path.join(uploadsDir, ev.code, b.id);
       let st; try { st = fs.statSync(fp); } catch { return err(res, 400, 'Il file non è arrivato.'); }
-      const rec = { id: b.id, kind: KINDS.includes(b.kind) ? b.kind : 'altro', label: clip(b.label, 120), name, size: st.size, at: new Date().toISOString() };
-      ev.files.push(rec); logAdd(ev, role, 'caricato', rec.name); save();
+      const kind = KINDS.includes(b.kind) ? b.kind : 'altro';
+      if (kind === 'programma') {
+        if (!(path.extname(name).slice(1).toLowerCase() in PROG_TYPES)) { fs.rm(fp, { force: true }, () => {}); return err(res, 415, 'Per il programma servono un PDF, una foto o un documento Word.'); }
+        for (const old of ev.files.filter((f) => f.kind === 'programma')) fs.rm(path.join(uploadsDir, ev.code, old.id), { force: true }, () => {});
+        ev.files = ev.files.filter((f) => f.kind !== 'programma');
+      }
+      const rec = { id: b.id, kind, label: clip(b.label, 120), name, size: st.size, at: new Date().toISOString() };
+      ev.files.push(rec); logAdd(ev, role, kind === 'programma' ? 'programma caricato' : 'caricato', rec.name); save();
       return send(res, 201, { file: rec });
     }
     const f = /^files\/([a-f0-9]{16})$/.exec(rest);
