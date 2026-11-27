@@ -10,18 +10,21 @@ async function setup(opts = {}) {
   const hub = createHubServer({ port: 0, host: '127.0.0.1', dataDir, adminPin: 'segreto', ...opts });
   const port = await hub.listen();
   const base = `http://127.0.0.1:${port}`;
-  const make = async (body = { name: 'Congresso', date: '2026-11-14', venue: 'Sala Verdi' }) => {
+  const pins = new Map();
+  const make = async (body = { name: 'Congresso', date: new Date().toISOString().slice(0, 10), venue: 'Sala Verdi' }) => {
     const r = await fetch(base + '/api/events', { method: 'POST', headers: { 'x-admin-pin': 'segreto', 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    return { status: r.status, ...(await r.json()) };
+    const j = await r.json();
+    if (j.links) { pins.set(j.links.agenzia, j.pins.agenzia); pins.set(j.links.tecnico, j.pins.tecnico); }
+    return { status: r.status, ...j };
   };
-  const call = (code, tok, sub = '', init = {}) => fetch(`${base}/api/e/${code}${sub}`, { ...init, headers: { authorization: 'Bearer ' + tok, ...(init.headers || {}) } });
+  const call = (code, tok, sub = '', init = {}) => fetch(`${base}/api/e/${code}${sub}`, { ...init, headers: { authorization: 'Bearer ' + tok, ...(pins.has(tok) ? { 'x-pin': pins.get(tok) } : {}), ...(init.headers || {}) } });
   const upload = (code, tok, name, content, fields = {}) => {
     const fd = new FormData();
     for (const [k, v] of Object.entries(fields)) fd.append(k, v);
     fd.append('file', new Blob([content]), name);
     return call(code, tok, '/upload', { method: 'POST', body: fd });
   };
-  return { hub, base, make, call, upload, close: async () => { await hub.close(); fs.rmSync(dataDir, { recursive: true, force: true }); } };
+  return { hub, base, make, call, upload, pins, close: async () => { await hub.close(); fs.rmSync(dataDir, { recursive: true, force: true }); } };
 }
 
 test('creare un evento richiede il PIN di amministrazione', async () => {
@@ -133,7 +136,69 @@ test('i dati restano dopo un riavvio', async () => {
   await a.close();
   const b = createHubServer({ port: 0, host: '127.0.0.1', dataDir, adminPin: 'p' });
   const pb = await b.listen();
-  const e = await (await fetch(`http://127.0.0.1:${pb}/api/e/${r.code}`, { headers: { authorization: 'Bearer ' + r.links.agenzia } })).json();
+  const e = await (await fetch(`http://127.0.0.1:${pb}/api/e/${r.code}`, { headers: { authorization: 'Bearer ' + r.links.agenzia, 'x-pin': r.pins.agenzia } })).json();
   assert.equal(e.name, 'Persistente');
   await b.close(); fs.rmSync(dataDir, { recursive: true, force: true });
+});
+
+test('agenzia e service hanno bisogno anche del PIN, i relatori no', async () => {
+  const s = await setup();
+  const { code, links, pins } = await s.make();
+  assert.match(pins.agenzia, /^\d{6}$/);
+  const bare = (tok, pin) => fetch(`${s.base}/api/e/${code}`, { headers: { authorization: 'Bearer ' + tok, ...(pin ? { 'x-pin': pin } : {}) } });
+  const no = await bare(links.agenzia); assert.equal(no.status, 401); assert.equal((await no.json()).needPin, true);
+  const wrong = await bare(links.agenzia, '000000'); assert.equal(wrong.status, 401); assert.equal((await wrong.json()).needPin, true);
+  assert.equal((await bare(links.agenzia, pins.tecnico)).status, 401); // il PIN del service non apre il link dell'agenzia
+  assert.equal((await bare(links.agenzia, pins.agenzia)).status, 200);
+  assert.equal((await bare(links.ospite)).status, 200);
+  await s.close();
+});
+
+test('rigenerare il link annulla quello vecchio', async () => {
+  const s = await setup();
+  const { code, links } = await s.make();
+  const old = links.ospite;
+  const r = await s.call(code, links.agenzia, '/rotate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: 'ospite' }) });
+  assert.equal(r.status, 200);
+  const fresh = (await r.json()).links.ospite;
+  assert.notEqual(fresh, old);
+  assert.equal((await s.call(code, old)).status, 401);
+  assert.equal((await s.call(code, fresh)).status, 200);
+  // l'agenzia non può rigenerare il proprio link né quello del service
+  for (const role of ['agenzia', 'tecnico']) assert.equal((await s.call(code, links.agenzia, '/rotate', { method: 'POST', body: JSON.stringify({ role }) })).status, 403);
+  // il service può rigenerare l'agenzia e ottiene un nuovo PIN
+  const t = await s.call(code, links.tecnico, '/rotate', { method: 'POST', body: JSON.stringify({ role: 'agenzia' }) });
+  const j = await t.json(); assert.match(j.newPin, /^\d{6}$/);
+  assert.equal((await s.call(code, links.agenzia)).status, 401);
+  await s.close();
+});
+
+test('dopo la scadenza i file sono cancellati e il link non vale più', async () => {
+  const s = await setup();
+  const { code, links } = await s.make({ name: 'Passato', date: '2020-01-01' });
+  const ev = s.hub.events[code];
+  assert.equal(ev.expiresAt, '2020-01-31');
+  // evento scaduto fin dall'inizio: la prima richiesta lo cancella
+  ev.files.push({ id: 'aaaaaaaaaaaaaaaa', kind: 'altro', label: '', name: 'x.pdf', size: 1, at: new Date().toISOString() });
+  const r = await s.call(code, links.agenzia);
+  assert.equal(r.status, 410);
+  assert.equal(ev.files.length, 0); assert.equal(ev.purged, true);
+  assert.equal((await s.call(code, links.ospite)).status, 410);
+  assert.equal((await s.call(code, 'sbagliato')).status, 401);
+  await s.close();
+});
+
+test('solo il service può spostare la scadenza e l\'attività viene registrata', async () => {
+  const s = await setup();
+  const { code, links } = await s.make();
+  const put = (tok, body) => s.call(code, tok, '', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const before = (await (await s.call(code, links.agenzia)).json()).expiresAt;
+  await put(links.agenzia, { expiresAt: '2099-01-01' });
+  assert.equal((await (await s.call(code, links.agenzia)).json()).expiresAt, before);
+  await put(links.tecnico, { expiresAt: '2099-01-01' });
+  assert.equal((await (await s.call(code, links.agenzia)).json()).expiresAt, '2099-01-01');
+  await s.upload(code, links.agenzia, 'a.pdf', 'x');
+  const log = (await (await s.call(code, links.tecnico)).json()).log;
+  assert.ok(log.some((l) => l.action === 'caricato' && l.detail === 'a.pdf' && l.role === 'agenzia'));
+  await s.close();
 });

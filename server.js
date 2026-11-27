@@ -35,7 +35,7 @@ const clip = (v, n) => String(v ?? '').slice(0, n);
 export function createHubServer({
   port = 3000, host = '0.0.0.0', dataDir = path.join(here, 'data'), adminPin = process.env.ADMIN_PIN || '',
   maxFileMb = Number(process.env.MAX_FILE_MB) || 500, eventQuotaMb = Number(process.env.EVENT_QUOTA_MB) || 4096,
-  trustProxy = process.env.TRUST_PROXY === '1',
+  trustProxy = process.env.TRUST_PROXY === '1', retentionDays = Number(process.env.RETENTION_DAYS) || 30,
 } = {}) {
   const uploadsDir = path.join(dataDir, 'uploads');
   const dataFile = path.join(dataDir, 'events.json');
@@ -100,8 +100,31 @@ export function createHubServer({
       base.files = ev.files.map(({ id, kind, label, name, size, at }) => ({ id, kind, label, name, size, at }));
       base.usedBytes = eventBytes(ev); base.quotaBytes = eventQuotaMb * 1048576; base.maxFileBytes = maxFileMb * 1048576;
       base.links = { ospite: ev.tokens.ospite, agenzia: ev.tokens.agenzia, ...(role === 'tecnico' ? { tecnico: ev.tokens.tecnico } : {}) };
+      base.expiresAt = ev.expiresAt; base.log = ev.log.slice(-15).reverse();
     }
     return base;
+  }
+
+  const pin6 = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  const tok = () => crypto.randomBytes(16).toString('base64url');
+  const today = () => new Date().toISOString().slice(0, 10);
+  function addDays(iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+  const isExpired = (ev) => ev.purged || today() > ev.expiresAt;
+  function purge(ev) {
+    fs.rm(path.join(uploadsDir, ev.code), { recursive: true, force: true }, () => {});
+    ev.files = []; ev.purged = true; save();
+  }
+  function sweep() { for (const ev of Object.values(events)) if (!ev.purged && today() > ev.expiresAt) purge(ev); }
+  sweep(); const sweeper = setInterval(sweep, 3600_000); sweeper.unref();
+  function logAdd(ev, role, action, detail = '') {
+    ev.log.push({ at: new Date().toISOString(), role, action, detail: clip(detail, 120) });
+    if (ev.log.length > 200) ev.log.splice(0, ev.log.length - 200);
+  }
+  function pinState(ev, role, req) {
+    if (role === 'ospite') return 'ok';
+    const p = req.headers['x-pin'];
+    if (!p) return 'missing';
+    return safeEqual(p, ev.pins[role]) ? 'ok' : 'wrong';
   }
 
   function newCode() {
@@ -111,7 +134,7 @@ export function createHubServer({
     }
   }
 
-  function handleUpload(req, res, ev) {
+  function handleUpload(req, res, ev, role) {
     const len = Number(req.headers['content-length'] || 0);
     if (len && eventBytes(ev) + len > eventQuotaMb * 1048576) return err(res, 413, 'Spazio dell\'evento esaurito.');
     let bb;
@@ -146,7 +169,7 @@ export function createHubServer({
       fs.renameSync(tmpPath, final); tmpPath = null; done = true;
       const kind = KINDS.includes(fields.kind) ? fields.kind : 'altro';
       const rec = { id: meta.id, kind, label: clip(fields.label, 120), name: meta.name, size: meta.size, at: new Date().toISOString() };
-      ev.files.push(rec); save();
+      ev.files.push(rec); logAdd(ev, role, 'caricato', rec.name); save();
       send(res, 201, { file: rec });
     }, 20));
     req.pipe(bb);
@@ -160,23 +183,32 @@ export function createHubServer({
       if (blocked(ip)) return err(res, 429, 'Troppi tentativi. Riprova tra qualche minuto.');
       if (!safeEqual(req.headers['x-admin-pin'] || '', adminPin)) { noteFail(ip); return err(res, 401, 'PIN non corretto.'); }
       const b = await readJson(req);
-      const code = newCode(), tok = () => crypto.randomBytes(16).toString('base64url');
+      const code = newCode();
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') ? b.date : '';
       events[code] = {
-        code, name: clip(b.name, 120) || 'Evento senza nome', date: /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') ? b.date : '', venue: clip(b.venue, 160),
+        code, name: clip(b.name, 120) || 'Evento senza nome', date, venue: clip(b.venue, 160),
         program: '', info: { montaggio: '', inizio: '', fine: '', referente: '', telefono: '', note: '' }, timerUrl: '',
-        tokens: { agenzia: tok(), tecnico: tok(), ospite: tok() }, files: [], createdAt: new Date().toISOString(),
+        tokens: { agenzia: tok(), tecnico: tok(), ospite: tok() }, pins: { agenzia: pin6(), tecnico: pin6() }, files: [], log: [],
+        createdAt: new Date().toISOString(), expiresAt: addDays(date || today(), date ? retentionDays : 60), purged: false,
       };
       saveNow();
-      return send(res, 201, { code, links: events[code].tokens });
+      return send(res, 201, { code, links: events[code].tokens, pins: events[code].pins, expiresAt: events[code].expiresAt });
     }
     const m = /^\/api\/e\/([A-Z0-9]+)(?:\/(.*))?$/.exec(url.pathname);
     if (!m || !CODE_RE.test(m[1])) return err(res, 404, 'Non trovato.');
     if (blocked(ip)) return err(res, 429, 'Troppi tentativi. Riprova tra qualche minuto.');
     const ev = events[m[1]]; const role = ev ? roleOf(ev, req) : null;
     if (!ev || !role) { noteFail(ip); return err(res, 401, 'Link non valido o scaduto.'); }
+    const ps = pinState(ev, role, req);
+    if (ps === 'missing') return send(res, 401, { error: 'Serve il PIN.', needPin: true });
+    if (ps === 'wrong') { noteFail(ip); return send(res, 401, { error: 'PIN non corretto.', needPin: true }); }
+    if (isExpired(ev)) { if (!ev.purged) purge(ev); return err(res, 410, 'Evento concluso: i materiali sono stati cancellati e il link non è più attivo.'); }
     const rest = m[2] || '';
 
-    if (rest === '' && req.method === 'GET') return send(res, 200, publicEvent(ev, role));
+    if (rest === '' && req.method === 'GET') {
+      if (req.headers['x-open'] === '1') { logAdd(ev, role, 'apertura'); save(); }
+      return send(res, 200, publicEvent(ev, role));
+    }
     if (!EDIT_ROLES.has(role)) return err(res, 403, 'Questo link è in sola lettura.');
 
     if (rest === '' && req.method === 'PUT') {
@@ -185,20 +217,31 @@ export function createHubServer({
       if ('date' in b) ev.date = /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') ? b.date : '';
       if ('venue' in b) ev.venue = clip(b.venue, 160);
       if ('program' in b) ev.program = clip(b.program, 20000);
+      if (role === 'tecnico' && /^\d{4}-\d{2}-\d{2}$/.test(b.expiresAt || '')) { ev.expiresAt = b.expiresAt; logAdd(ev, role, 'scadenza', b.expiresAt); }
       if ('timerUrl' in b) ev.timerUrl = /^https?:\/\//.test(b.timerUrl || '') ? clip(b.timerUrl, 300) : '';
       if (b.info && typeof b.info === 'object') for (const k of Object.keys(ev.info)) if (k in b.info) ev.info[k] = clip(b.info[k], k === 'note' ? 2000 : 160);
       save();
       return send(res, 200, publicEvent(ev, role));
     }
-    if (rest === 'upload' && req.method === 'POST') return handleUpload(req, res, ev);
+    if (rest === 'rotate' && req.method === 'POST') {
+      const b = await readJson(req);
+      const allowed = role === 'tecnico' ? ['ospite', 'agenzia'] : ['ospite'];
+      if (!allowed.includes(b.role)) return err(res, 403, 'Non puoi rigenerare questo link.');
+      ev.tokens[b.role] = tok();
+      let pin; if (b.role === 'agenzia') { pin = pin6(); ev.pins.agenzia = pin; }
+      logAdd(ev, role, 'link rigenerato', b.role); save();
+      return send(res, 200, { ...publicEvent(ev, role), newPin: pin });
+    }
+    if (rest === 'upload' && req.method === 'POST') return handleUpload(req, res, ev, role);
     const f = /^files\/([a-f0-9]{16})$/.exec(rest);
     if (f) {
       const i = ev.files.findIndex((x) => x.id === f[1]);
       if (i < 0) return err(res, 404, 'File non trovato.');
       const rec = ev.files[i]; const p = path.join(uploadsDir, ev.code, rec.id);
-      if (req.method === 'DELETE') { fs.rm(p, { force: true }, () => {}); ev.files.splice(i, 1); save(); return send(res, 200, { ok: true }); }
+      if (req.method === 'DELETE') { fs.rm(p, { force: true }, () => {}); ev.files.splice(i, 1); logAdd(ev, role, 'eliminato', rec.name); save(); return send(res, 200, { ok: true }); }
       if (req.method === 'GET') {
         if (!fs.existsSync(p)) return err(res, 404, 'File non trovato.');
+        logAdd(ev, role, 'scaricato', rec.name); save();
         res.writeHead(200, {
           'content-type': 'application/octet-stream', 'content-length': rec.size, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
           'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(rec.name)}`,

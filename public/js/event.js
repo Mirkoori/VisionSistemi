@@ -4,7 +4,9 @@ const app = document.getElementById('app');
 const code = (location.pathname.split('/')[2] || '').toUpperCase();
 const KEY = 'hub:' + code;
 const KINDS = [['presentazioni', 'Presentazioni'], ['video', 'Video'], ['musiche', 'Musiche'], ['tappo', 'Slide tappo'], ['altro', 'Altro']];
-let token = null, ev = null, kind = 'presentazioni';
+let token = null, ev = null, kind = 'presentazioni', firstLoad = true;
+const PINKEY = 'hubpin:' + code;
+const getPin = () => { try { return sessionStorage.getItem(PINKEY) || ''; } catch { return ''; } };
 
 try { token = localStorage.getItem(KEY); } catch {}
 const hm = /(?:^|[#&])k=([^&]+)/.exec(location.hash);
@@ -16,8 +18,16 @@ if (hm) {
 const canEdit = () => ev && (ev.role === 'agenzia' || ev.role === 'tecnico');
 
 async function api(sub, init = {}) {
-  const r = await fetch('/api/e/' + code + sub, { ...init, headers: { authorization: 'Bearer ' + token, ...(init.headers || {}) } });
-  if (r.status === 401) { try { localStorage.removeItem(KEY); } catch {} throw Object.assign(new Error('Link non valido o scaduto.'), { auth: true }); }
+  const extra = {}; const pin = getPin(); if (pin) extra['x-pin'] = pin;
+  if (firstLoad && sub === '') { extra['x-open'] = '1'; }
+  const r = await fetch('/api/e/' + code + sub, { ...init, headers: { authorization: 'Bearer ' + token, ...extra, ...(init.headers || {}) } });
+  if (r.status === 401) {
+    const j = await r.clone().json().catch(() => ({}));
+    if (j.needPin) throw Object.assign(new Error(j.error || 'Serve il PIN.'), { needPin: true });
+    try { localStorage.removeItem(KEY); } catch {}
+    throw Object.assign(new Error('Link non valido o scaduto.'), { auth: true });
+  }
+  if (r.status === 410) { const j = await r.clone().json().catch(() => ({})); throw Object.assign(new Error(j.error || 'Evento concluso.'), { gone: true }); }
   return r;
 }
 const putEvent = async (body) => {
@@ -164,6 +174,13 @@ function info() {
       linkRow('Link per i relatori', 'Sola lettura: programma e informazioni.', ev.links.ospite) +
       linkRow('Link per l\'agenzia', 'Può caricare e modificare. Non girarlo ai relatori.', ev.links.agenzia) +
       (ev.links.tecnico ? linkRow('Link per il service', 'Solo per noi.', ev.links.tecnico) : '') + '</div>';
+    h += '<div class="card"><h3>Sicurezza</h3><p>Agenzia e service entrano con il link e con un PIN, che va dato a parte (a voce o con un altro messaggio). I relatori vedono solo programma e informazioni.</p>' +
+      '<dl class="kv"><dt>Scadenza</dt><dd>I file vengono cancellati il ' + esc(dayLong(ev.expiresAt)) + ' e il link smette di funzionare.</dd></dl>' +
+      (ev.role === 'tecnico' ? '<label for="exp">Sposta la scadenza</label><input type="date" id="exp" value="' + esc(ev.expiresAt) + '"><div class="btns"><button class="btn small" type="button" id="saveX">Salva scadenza</button></div><p class="msg" id="msgX" role="status"></p>' : '') +
+      '<div class="btns"><button class="btn small danger" type="button" data-rot="ospite">Rigenera link relatori</button>' +
+      (ev.role === 'tecnico' ? '<button class="btn small danger" type="button" data-rot="agenzia">Rigenera link e PIN agenzia</button>' : '') + '</div>' +
+      '<p>Rigenerare un link annulla subito quello vecchio: usalo se è finito a chi non doveva averlo.</p><p class="msg" id="msgR" role="status"></p></div>';
+    h += '<div class="card"><h3>Attività recenti</h3>' + (ev.log.length ? ev.log.map((l) => '<div class="row"><div class="t"><b>' + esc(l.action + (l.detail ? ': ' + l.detail : '')) + '</b><small>' + esc(roleLabel[l.role] + ' · ' + new Date(l.at).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</small></div></div>').join('') : '<p class="empty">Ancora nessuna attività.</p>') + '</div>';
   } else {
     const rows = [['Data', dayLong(ev.date)], ['Location', ev.venue], ['Montaggio', i.montaggio], ['Inizio', i.inizio], ['Fine', i.fine], ['Referente', i.referente], ['Telefono', i.telefono], ['Note', i.note]].filter((r) => r[1]);
     h += '<div class="card">' + (rows.length ? '<dl class="kv">' + rows.map((r) => '<dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd>').join('') + '</dl>' : '<p class="empty">Nessuna informazione inserita.</p>') + '</div>';
@@ -172,6 +189,16 @@ function info() {
   app.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
     const ok = await copyText(b.dataset.copy); b.textContent = ok ? 'Copiato' : 'Copia a mano'; setTimeout(() => { b.textContent = 'Copia'; }, 2000);
   }));
+  app.querySelectorAll('[data-rot]').forEach((b) => b.addEventListener('click', async () => {
+    if (!b.dataset.arm) { b.dataset.arm = '1'; const o = b.textContent; b.textContent = 'Confermi?'; setTimeout(() => { delete b.dataset.arm; b.textContent = o; }, 4000); return; }
+    try {
+      const r = await api('/rotate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: b.dataset.rot }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Errore');
+      ev = { ...ev, ...j }; info();
+      const m = $('#msgR'); m.className = 'msg ok'; m.textContent = j.newPin ? 'Link rigenerato. Nuovo PIN dell\'agenzia: ' + j.newPin : 'Link rigenerato. Copia quello nuovo qui sopra.';
+    } catch (e) { const m = $('#msgR'); m.className = 'msg err'; m.textContent = e.message; }
+  }));
+  const sx = $('#saveX'); if (sx) sx.addEventListener('click', () => saveWith(sx, $('#msgX'), () => putEvent({ expiresAt: $('#exp').value }), info));
   const s = $('#saveI');
   if (s) s.addEventListener('click', () => saveWith(s, $('#msgI'), () => {
     const inf = {}; INFO_FIELDS.forEach(([k]) => { inf[k] = $('#i_' + k).value; }); inf.note = $('#i_note').value;
@@ -202,7 +229,18 @@ async function reload() {
 function locked(msg) {
   app.innerHTML = '<div class="lock"><h1>Hub Evento</h1><p>' + esc(msg) + '</p><p>Chiedi all\'agenzia o al service di mandarti di nuovo il link dell\'evento.</p></div>';
 }
-(async () => {
+function askPin(msg) {
+  app.innerHTML = '<div class="lock"><h1>Hub Evento</h1><p>' + esc(msg || 'Scrivi il PIN che ti hanno dato.') + '</p><form id="pf" autocomplete="off"><label for="pn" style="text-align:left">PIN</label><input type="password" id="pn" inputmode="numeric" autocomplete="off" required>' +
+    '<div class="btns" style="justify-content:center"><button class="btn primary" type="submit">Entra</button></div></form></div>';
+  $('#pf').addEventListener('submit', (e) => { e.preventDefault(); try { sessionStorage.setItem(PINKEY, $('#pn').value.trim()); } catch {} start(); });
+  $('#pn').focus();
+}
+async function start() {
   if (!token) return locked('Per aprire questo evento serve il suo link personale.');
-  try { await reload(); render(); } catch (e) { locked(e.auth ? 'Questo link non è valido o è scaduto.' : (e.message || 'Impossibile caricare l\'evento.')); }
-})();
+  try { await reload(); firstLoad = false; render(); }
+  catch (e) {
+    if (e.needPin) { try { sessionStorage.removeItem(PINKEY); } catch {} return askPin(e.message); }
+    locked(e.gone ? e.message : e.auth ? 'Questo link non è valido o è scaduto.' : (e.message || 'Impossibile caricare l\'evento.'));
+  }
+}
+start();
