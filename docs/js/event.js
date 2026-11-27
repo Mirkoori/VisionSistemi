@@ -49,8 +49,7 @@ const roleLabel = { agenzia: 'Agenzia', tecnico: 'Service', ospite: 'Sola lettur
 function home() {
   const info = [ev.venue, [ev.info.inizio && 'inizio ' + ev.info.inizio, ev.info.fine && 'fine ' + ev.info.fine].filter(Boolean).join(' · ')].filter(Boolean).join(' · ');
   const cards = [];
-  cards.push(['c3', '04', 'Info', 'Location · Orari · Contatti', '#info']);
-  if (canEdit() || ev.timerUrl) cards.push(['c4', '03', 'Timer', 'Schermo relatore · Moderatore', '#timer']);
+  cards.push(['c3', '03', 'Info', 'Location · Orari · Contatti', '#info']);
   if (canEdit()) cards.push(['c2', '02', 'Materiali', 'Presentazioni · Video · Musiche · Tappo' + (ev.files.length ? ' · ' + ev.files.length + ' file' : ''), '#materiali']);
   cards.push(['c1', '01', 'Programma', (ev.program.trim() || ev.programFile) ? 'Interventi e orari' : 'Da inserire', '#programma', dayShort(ev.date)]);
   app.innerHTML = '<div class="hero"><div class="topbar">' + (isStaff() ? '<a class="btn small" href="' + esc(new URL('index.html', location.href).href) + '#eventi">← Home</a>' : '<span class="tag">Hub Evento</span>') + '<span class="tag">' + esc(code) + '</span></div>' +
@@ -215,7 +214,7 @@ function linkRow(label, note, tok) {
 }
 function info() {
   const i = ev.info;
-  let h = hero('var(--c3)', '04 · Info', 'Info', ev.name, true) + '<div class="list">';
+  let h = hero('var(--c3)', '03 · Info', 'Info', ev.name, true) + '<div class="list">';
   if (canEdit()) {
     h += '<div class="card"><h3>Dettagli</h3><label for="n">Nome evento</label><input type="text" id="n" maxlength="120" value="' + esc(ev.name) + '">' +
       '<label for="d">Data</label><input type="date" id="d" value="' + esc(ev.date) + '"><label for="v">Location</label><input type="text" id="v" maxlength="160" value="' + esc(ev.venue) + '">' +
@@ -265,7 +264,7 @@ async function saveWith(btn, msg, fn, rerender) {
 }
 
 /* ---------- avvio e routing ---------- */
-const routes = { programma, materiali, timer, info };
+const routes = { programma, materiali, info }; // il timer per ora è solo un tool nostro (area riservata)
 function render() {
   if (!ev) return;
   document.title = ev.name + ' · Hub Evento';
